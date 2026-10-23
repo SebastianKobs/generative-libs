@@ -72,6 +72,22 @@ test('a choice and a choices gene draw the same with their options given in anot
   }
 });
 
+test('a pair swaps in an option as likely as its weight, 1 where none is given, whatever order the options are written in', () => {
+  const options = ['white', 'ochre', 'rust', 'blue'];
+  const weighted = choicesGene(options, 2, { rust: 2 });
+  const swappedIn = SEEDS.map((seed) => weighted.mutate(['white', 'ochre'], 1, seededRandomness(seed)))
+    .flat()
+    .filter((paint) => paint !== 'white' && paint !== 'ochre');
+  const rust = swappedIn.filter((paint) => paint === 'rust').length;
+  assert.equal(swappedIn.length, SEEDS.length);
+  assert.ok(rust > 230 && rust < 300, `rust twice as likely as blue: ${rust} of ${SEEDS.length}`);
+  const reordered = choicesGene([...options].reverse(), 2, { rust: 2 });
+  assert.deepEqual(
+    reordered.mutate(['white', 'ochre'], 1, seededRandomness(5)),
+    weighted.mutate(['white', 'ochre'], 1, seededRandomness(5)),
+  );
+});
+
 test('a choice switches only to another option, with a chance of the depth', () => {
   const gene = choiceGene(['a', 'b', 'c']);
   const switched = SEEDS.filter((seed) => gene.mutate('a', 0.5, seededRandomness(seed)) !== 'a');

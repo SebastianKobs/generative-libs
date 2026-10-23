@@ -58,15 +58,19 @@ export function choiceGene(options: readonly string[]): Gene<string> {
   };
 }
 // `count` options' names, none twice: with a chance of the depth, one of them, drawn by its place,
-// swapped for an option not among them
-export function choicesGene(options: readonly string[], count: number): Gene<readonly string[]> {
+// swapped for an option not among them, each as likely as its weight (1 where none is given)
+export function choicesGene(
+  options: readonly string[],
+  count: number,
+  weights: Readonly<Record<string, number>> = {},
+): Gene<readonly string[]> {
   return {
     mutate(value, depth, randomness) {
       if (randomness.next() >= depth) {
         return value;
       }
       const place = Math.floor(randomness.next() * count);
-      const swapped = drawFrom(sortedWithout(options, value), randomness);
+      const swapped = drawWeighted(sortedWithout(options, value), weights, randomness);
       if (swapped === undefined) {
         return value;
       }
@@ -81,6 +85,22 @@ function sortedWithout(options: readonly string[], left: readonly string[]): str
 }
 function drawFrom(options: readonly string[], randomness: Randomness): string | undefined {
   return options[Math.floor(randomness.next() * options.length)];
+}
+// an option drawn as likely as its weight, 1 where none is given; one draw, as drawFrom()'s
+function drawWeighted(
+  options: readonly string[],
+  weights: Readonly<Record<string, number>>,
+  randomness: Randomness,
+): string | undefined {
+  const weightOf = (option: string): number => weights[option] ?? 1;
+  let left = randomness.next() * options.reduce((total, option) => total + weightOf(option), 0);
+  for (const option of options) {
+    left -= weightOf(option);
+    if (left < 0) {
+      return option;
+    }
+  }
+  return options.at(-1);
 }
 function clamp(value: number, bounds: { lowest: number; highest: number }): number {
   return Math.min(bounds.highest, Math.max(bounds.lowest, value));
