@@ -11,13 +11,14 @@ field.food(0.3, 0.6);   // a plant born at (0.3, 0.6) on the plane 0 to 1; runs 
 field.seed(0.3, 0.6);   // a note played there: perSeed agents let loose
 field.advanceTo(10);    // every quantum that ends by beat 10
 field.traffic;          // where agents ran, TRAFFIC_GRID cells a side, row by row, read-only
+field.quanta;           // the quanta reached: 20 here
 ```
 
-The caller tells each event before advancing past its beat: `advanceTo(its beat)`, then `food()` or `seed()`. A beat already reached does nothing. The plane's edges turn an agent away; it does not wrap round.
+The caller tells each event before advancing past its beat: `advanceTo(its beat)`, then `food()` or `seed()`. A beat already reached does nothing. A field no agent was ever let loose in has nothing to move, so advancing it skips its quanta at once: one made late costs nothing. The plane's edges turn an agent away; it does not wrap round.
 
 | File | What it does |
 |---|---|
-| [`trail-field.ts`](trail-field.ts) | `TrailField`: `food()`, `seed()`, `advanceTo()`, `traffic`, `rules`; `TrailRules` (`sense`, `sensorAngle`, `turn`, `fade`, `perSeed`); up to 700 agents, the oldest let go first; the field 160 cells a side |
+| [`trail-field.ts`](trail-field.ts) | `TrailField`: `food()`, `seed()`, `advanceTo()`, `quanta`, `traffic`, `rules`; `TrailRules` (`sense`, `sensorAngle`, `turn`, `fade`, `perSeed`); up to 700 agents, the oldest let go first; the field 160 cells a side |
 | [`traffic.ts`](traffic.ts) | `TRAFFIC_GRID`, where agents ran on a grid finer than the field's; an agent's step recorded as a smooth hairline, the traffic fading with the trail |
 
 Tested in node on a seeded `Randomness` (`test/trails.test.js`).

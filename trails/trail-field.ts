@@ -93,12 +93,26 @@ export class TrailField {
     this.#told.push({ kind: 'seed', x, y });
   }
 
+  // how many quanta have been reached, the idle ones skipped included
+  get quanta(): number {
+    return this.#quanta;
+  }
+
   // Runs every quantum that ends by `beat`; a beat already reached does nothing
   advanceTo(beat: number): void {
     const target = Math.floor(beat / QUANTUM_BEATS);
     while (this.#quanta < target) {
+      if (this.#isIdle()) {
+        this.#quanta = target; // nothing to move, fade or draw: a late field costs nothing
+        return;
+      }
       this.#runQuantum();
     }
+  }
+
+  // No agent was ever let loose and nothing is told: the trail and the traffic are empty and stay so
+  #isIdle(): boolean {
+    return this.#agents === 0 && this.#told.length === 0;
   }
 
   #runQuantum(): void {

@@ -128,3 +128,20 @@ test('two foods and seeds between them grow more traffic along the line joining 
   assert.ok(along > 0);
   assert.ok(along > 3 * offEach, `along ${along}, off ${offEach}`);
 });
+
+test('a field with nothing loose skips its idle quanta: late, it runs as a fresh one does from its first event', () => {
+  const late = fieldOf(1);
+  const before = performance.now();
+  late.advanceTo(2000);
+  assert.ok(performance.now() - before < 500, 'a quantum with no agent costs nothing');
+  assert.equal(late.quanta, 4000);
+  const fresh = fieldOf(1);
+  for (const field of [late, fresh]) {
+    field.food(0.2, 0.5);
+    field.seed(0.2, 0.5);
+  }
+  late.advanceTo(2004);
+  fresh.advanceTo(4);
+  assert.ok(total(fresh.traffic) > 0);
+  assert.ok(sameTraffic(late.traffic, fresh.traffic));
+});
