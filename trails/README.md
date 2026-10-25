@@ -1,6 +1,6 @@
 # trails
 
-A slime mould's agents on a field (Physarum, after Jeff Jones's 2010 model): agents sense the trail ahead, left and right, turn towards the strongest, step and deposit; the trail diffuses and fades slowly. Food, a hearth and a wide, faint scent, draws them; each seed lets a few more loose; the threads that grow link the foods. A field is run forward in half-beat quanta and keeps no copy of its past: the same events told at the same beats give the same trails. No drawing: ink, an image or a heat map made of the traffic is the caller's. It uses only `libs/generative/randomness/`.
+A slime mould's agents on a field, or on a grid of tiles that hand agents over at the seams (Physarum, after Jeff Jones's 2010 model): agents sense the trail ahead, left and right, turn towards the strongest, step and deposit; the trail diffuses and fades slowly. Food, a hearth and a wide, faint scent, draws them; each seed lets a few more loose; the threads that grow link the foods. A field is run forward in half-beat quanta and keeps no copy of its past: the same events told at the same beats give the same trails. No drawing: ink, an image or a heat map made of the traffic is the caller's. It uses only `libs/generative/randomness/`.
 
 ```ts
 import { TRAFFIC_GRID, TrailField } from './index.ts';
@@ -17,13 +17,30 @@ field.quanta;           // the quanta reached: 20 here
 field.tints;            // the colors laid, TrailField.grid cells a side: sums of red, green, blue and their weight
 ```
 
-Optional rules shape the mould further: a food's `hearth` and `scent` and how far each reaches, so threads run into a food and foods smell each other; an agent's `lifetime`; a share of `scouts`, which smell only the other foods and lay a trail only near one, so new threads grow between foods, and their own `scoutLifetime`; `tintReach`, how far from where it was let loose an agent's color counts. Each is documented on `TrailRules`; left out, the mould runs as it did before them.
+Fields on a grid of tiles, so threads cross the seams between them:
 
-The caller tells each event before advancing past its beat: `advanceTo(its beat)`, then `food()`, `foodGone()` or `seed()`. A beat already reached does nothing. A field no agent was ever let loose in has nothing to move, so advancing it skips its quanta at once: one made late costs nothing. The plane's edges turn an agent away; it does not wrap round.
+```ts
+import { TrailTiles } from './index.ts';
+const tiles = new TrailTiles({ ...rules, edges: 'pass' }, randomness.fork('mould'), 4);   // 4: a world of 4 × 4 tiles that wraps round
+tiles.advanceTo(4);
+tiles.food(1.25, 0.5);    // places in tile units: a quarter into tile 1, halfway down tile 0
+tiles.seed(1.25, 0.5);    // agents let loose in tile 1, its own tile only
+tiles.advanceTo(10);      // every field, tile by tile, row by row, one quantum at a time, then the agents that left handed on
+tiles.fields;             // [{ tile: { across, down }, field }], in the order they were made
+```
+
+Optional rules shape the mould further: a food's `hearth` and `scent` and how far each reaches, so threads run into a food and foods smell each other; an agent's `lifetime`; a share of `scouts`, which smell only the other foods and lay a trail only near one, so new threads grow between foods, and their own `scoutLifetime`; `tintReach`, how far from where it was let loose an agent's color counts; `edges`, `'turn'` (if not said) turning an agent away at the plane's edge, or `'pass'`, letting it go once it steps past, kept with its place, heading, home, age, scout flag and color in the field's `leavers`. Each is documented on `TrailRules`; left out, the mould runs as it did before them.
+
+The caller tells each event before advancing past its beat: `advanceTo(its beat)`, then `food()`, `foodGone()` or `seed()`. A beat already reached does nothing. A field no agent was ever let loose in has nothing to move, so advancing it skips its quanta at once: one made late costs nothing. A lone field's edges turn an agent away; it does not wrap round.
+
+`TrailTiles` makes a field where a food's reach overlaps a tile (laid in each tile it overlaps, in that tile's own plane) or a seed falls, and nowhere else, so empty world costs nothing. An agent stepping past a tile's plane passes into the tile beyond where there is a field, with its color, home and scout flag, and the step that crossed is laid in both fields; where there is none it turns away, as at an edge, so agents make no fields where nobody has been. Each field's draws are a fork of the tiles' `Randomness` by its tile; the same events told at the same beats give the same traffic in every tile, in one go or in small steps. `wrapAcross` makes the tile after the last the first.
+
+Found, kept: an agent near an edge smells nothing past it (the trail and food beyond are in the other field), so a thread may falter at a seam, but it crosses.
 
 | File | What it does |
 |---|---|
-| [`trail-field.ts`](trail-field.ts) | `TrailField`: `food()`, `foodGone()`, `seed()` (a color and a count optional), `advanceTo()`, `quanta`, `traffic`, `tints`, `rules`; `TrailRules` (`sense`, `sensorAngle`, `turn`, `fade`, `perSeed`; optional `scent`, `scentReach`, `hearth`, `hearthReach`, `lifetime`, `scouts`, `scoutLifetime`, `tintReach`); `Tint`, `Tints`; up to 700 agents, the oldest let go first; the field 160 cells a side |
+| [`trail-field.ts`](trail-field.ts) | `TrailField`: `food()`, `foodGone()`, `seed()` (a color and a count optional), `advanceTo()`, `quanta`, `traffic`, `tints`, `rules`, `arrive()`, `leavers`; `TrailRules` (`sense`, `sensorAngle`, `turn`, `fade`, `perSeed`; optional `scent`, `scentReach`, `hearth`, `hearthReach`, `lifetime`, `scouts`, `scoutLifetime`, `tintReach`, `edges`); `Tint`, `Tints`; up to 700 agents, the oldest let go first; the field 160 cells a side |
+| [`trail-tiles.ts`](trail-tiles.ts) | `TrailTiles`: fields on a grid of tiles stepped together, in tile units: `food()`, `foodGone()`, `seed()`, `advanceTo()`, `rules`, `fields` (each with its `Tile`); an optional `wrapAcross`; agents that stepped past a plane handed to the field beyond |
 | [`traffic.ts`](traffic.ts) | `TRAFFIC_GRID`, where agents ran on a grid finer than the field's; an agent's step recorded as a smooth hairline, the traffic fading with the trail |
 
 Tested in node on a seeded `Randomness` (`test/trails.test.js`).

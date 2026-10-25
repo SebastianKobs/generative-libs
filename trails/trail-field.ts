@@ -20,6 +20,8 @@ import { fadeTraffic, recordTraffic, TRAFFIC_GRID } from './traffic.ts';
 //   scoutLifetime: how many quanta a scout runs before it's let go (the lifetime if not said)
 //   tintReach: how far from where it was let loose an agent's color counts, in the field's cells, to 1/e (all the way if not said):
 //     so a thread shows the color of the plant nearest, not the one with the most agents
+//   edges: what the plane's edges do to an agent ('turn' if not said): 'turn' turns it away a cell inside; 'pass' lets it go once it steps
+//     past the plane, kept in `leavers` for whoever runs the field next to it (TrailTiles), unless nothing lies beyond: then it turns away
 export interface TrailRules {
   readonly sense: number;
   readonly sensorAngle: number;
@@ -34,7 +36,22 @@ export interface TrailRules {
   readonly scouts?: number;
   readonly scoutLifetime?: number;
   readonly tintReach?: number;
+  readonly edges?: 'turn' | 'pass';
 }
+// An agent as it passes from one field to the next: where it stands and its home, in the plane of the field it is handed to (0 to 1
+// across and down; a leaver's just past the plane it left), the heading it keeps, its age in quanta, and its color if it has one
+export interface Traveller {
+  readonly x: number;
+  readonly y: number;
+  readonly heading: number;
+  readonly homeX: number;
+  readonly homeY: number;
+  readonly age: number;
+  readonly scout: boolean;
+  readonly tint?: Tint | undefined;
+}
+// Whether a field lies one tile across and down (each -1, 0 or 1) beyond this one's plane: where none does, an agent turns away
+export type FieldBeyond = (across: number, down: number) => boolean;
 // A food's shape under the rules: its hearth's and scent's heights and widths (in cells squared), and how far it's laid
 interface FoodShape {
   readonly hearthHeight: number;
@@ -57,17 +74,23 @@ export interface Tints {
 
 // What a caller has told that no quantum has run yet
 interface Told {
-  readonly kind: 'food' | 'foodGone' | 'seed';
+  readonly kind: 'food' | 'foodGone' | 'seed' | 'arrive';
   readonly x: number;
   readonly y: number;
   readonly tint?: Tint | undefined;
   readonly agents?: number | undefined;
+  readonly traveller?: Traveller | undefined;
+}
+
+interface Point {
+  readonly x: number;
+  readonly y: number;
 }
 
 const GRID = 160; // the field's cells a side
 const GRID_TUNED_ON = 112; // the distances below were tuned on this many cells a side
 const SCALE = GRID / GRID_TUNED_ON;
-const QUANTUM_BEATS = 0.5;
+export const QUANTUM_BEATS = 0.5;
 const STEPS_PER_QUANTUM = 4;
 const MAX_AGENTS = 700;
 const SPEED = 1.1; // cells a step
@@ -107,6 +130,7 @@ export class TrailField {
   readonly #scout = new Uint8Array(MAX_AGENTS); // 1 for a scout
   readonly #agentTint = new Float32Array(MAX_AGENTS * 3); // the color each agent carries, red, green, blue
   readonly #agentTinted = new Uint8Array(MAX_AGENTS); // 1 where it carries one
+  readonly #gone = new Uint8Array(MAX_AGENTS); // 1 once it left for another field: no age lets it go without a lifetime
   readonly #tints = {
     red: new Float32Array(GRID * GRID),
     green: new Float32Array(GRID * GRID),
@@ -114,15 +138,19 @@ export class TrailField {
     weight: new Float32Array(GRID * GRID),
   };
   readonly #told: Told[] = [];
+  readonly #leavers: Traveller[] = [];
+  readonly #fieldBeyond: FieldBeyond;
   #rules: TrailRules;
   #agents = 0;
   #oldest = 0; // the next agent to be let go once MAX_AGENTS are loose
   #quanta = 0;
 
-  // The agents' draws come from `randomness`, on a stream of their own
-  constructor(rules: TrailRules, randomness: Randomness) {
+  // The agents' draws come from `randomness`, on a stream of their own.
+  // `fieldBeyond` tells, for 'pass' edges, which sides have a field to hand an agent to (every side if not said)
+  constructor(rules: TrailRules, randomness: Randomness, fieldBeyond: FieldBeyond = () => true) {
     this.#rules = rules;
     this.#draws = randomness.fork('agents');
+    this.#fieldBeyond = fieldBeyond;
   }
 
   // where agents ran, TRAFFIC_GRID cells a side, row by row: read, don't change
@@ -140,6 +168,13 @@ export class TrailField {
   get rules(): TrailRules {
     return this.#rules;
   }
+  // the agents that stepped past the plane since they were last cleared, in the order they left: read, then clear
+  get leavers(): readonly Traveller[] {
+    return this.#leavers;
+  }
+  clearLeavers(): void {
+    this.#leavers.length = 0;
+  }
   // counts from the next quantum on
   set rules(rules: TrailRules) {
     this.#rules = rules;
@@ -156,6 +191,11 @@ export class TrailField {
   // A seed at (x, y): `agents` let loose there, `perSeed` if not said (a note played there), each carrying `tint` where it's given
   seed(x: number, y: number, tint?: Tint, agents?: number): void {
     this.#told.push({ kind: 'seed', x, y, tint, agents });
+  }
+
+  // An agent from the field beside, standing in this plane: it carries on from the next quantum's start
+  arrive(traveller: Traveller): void {
+    this.#told.push({ kind: 'arrive', x: traveller.x, y: traveller.y, traveller });
   }
 
   // how many quanta have been reached, the idle ones skipped included
@@ -195,9 +235,13 @@ export class TrailField {
     this.#quanta++;
   }
 
-  #apply({ kind, x, y, tint, agents }: Told): void {
+  #apply({ kind, x, y, tint, agents, traveller }: Told): void {
     if (kind === 'food' || kind === 'foodGone') {
       addFood(this.#food, { x, y }, this.#rules, kind === 'food' ? 1 : -1);
+      return;
+    }
+    if (kind === 'arrive' && traveller) {
+      this.#takeIn(traveller);
       return;
     }
     for (let agent = 0; agent < (agents ?? this.#rules.perSeed); agent++) {
@@ -206,8 +250,31 @@ export class TrailField {
   }
 
   // Once MAX_AGENTS are loose, the oldest goes first
-  #letLoose(x: number, y: number, tint: Tint | undefined): void {
+  #freeSlot(): number {
     const slot = this.#agents < MAX_AGENTS ? this.#agents++ : this.#oldest++ % MAX_AGENTS;
+    this.#gone[slot] = 0;
+    return slot;
+  }
+
+  // Carries on as it was, nothing drawn; the step that brought it across is laid here as it was in the field it left
+  #takeIn(traveller: Traveller): void {
+    const slot = this.#freeSlot();
+    const at = { x: traveller.x * GRID, y: traveller.y * GRID };
+    this.#agentX[slot] = at.x;
+    this.#agentY[slot] = at.y;
+    this.#heading[slot] = traveller.heading;
+    this.#bornAt[slot] = this.#quanta - traveller.age;
+    this.#homeX[slot] = traveller.homeX * GRID;
+    this.#homeY[slot] = traveller.homeY * GRID;
+    this.#scout[slot] = traveller.scout ? 1 : 0;
+    this.#agentTinted[slot] = traveller.tint ? 1 : 0;
+    this.#agentTint.set(traveller.tint ?? [0, 0, 0], slot * 3);
+    const from = { x: at.x - Math.cos(traveller.heading) * SPEED, y: at.y - Math.sin(traveller.heading) * SPEED };
+    this.#lay(slot, from, at);
+  }
+
+  #letLoose(x: number, y: number, tint: Tint | undefined): void {
+    const slot = this.#freeSlot();
     this.#agentX[slot] = x * GRID + (this.#draws.next() - 0.5) * SEED_SCATTER;
     this.#agentY[slot] = y * GRID + (this.#draws.next() - 0.5) * SEED_SCATTER;
     this.#heading[slot] = this.#draws.next() * Math.PI * 2;
@@ -224,6 +291,9 @@ export class TrailField {
     const lifetime = this.#rules.lifetime ?? Infinity;
     const scoutLifetime = this.#rules.scoutLifetime ?? lifetime;
     for (let agent = 0; agent < this.#agents; agent++) {
+      if (this.#gone[agent]) {
+        continue;
+      }
       const age = this.#quanta - cellAt(this.#bornAt, agent);
       if (age >= (this.#scout[agent] ? scoutLifetime : lifetime)) {
         continue; // let go: its slot taken by the next one let loose, the oldest first
@@ -277,17 +347,69 @@ export class TrailField {
     return Math.max(0, cellAt(this.#food, cell) - home) * FOOD_WEIGHT;
   }
 
-  // Steps along its heading, leaving traffic and a deposit; at the edge, turns away to a new heading
+  // Steps along its heading, leaving traffic and a deposit; at the edge, turns away to a new heading, or passes on
   #step(agent: number): void {
     const from = { x: cellAt(this.#agentX, agent), y: cellAt(this.#agentY, agent) };
     const heading = cellAt(this.#heading, agent);
     const to = { x: from.x + Math.cos(heading) * SPEED, y: from.y + Math.sin(heading) * SPEED };
+    if (this.#rules.edges === 'pass') {
+      this.#stepPassing(agent, from, to);
+      return;
+    }
     if (to.x < EDGE_MARGIN || to.y < EDGE_MARGIN || to.x > GRID - 1 - EDGE_MARGIN || to.y > GRID - 1 - EDGE_MARGIN) {
       this.#heading[agent] = this.#draws.next() * Math.PI * 2;
       return;
     }
     this.#agentX[agent] = to.x;
     this.#agentY[agent] = to.y;
+    this.#lay(agent, from, to);
+  }
+
+  // With 'pass' edges, an agent stands anywhere in the plane; past it, it goes to the field beyond, where there is one
+  #stepPassing(agent: number, from: Point, to: Point): void {
+    const across = sideOf(to.x);
+    const down = sideOf(to.y);
+    if (across === 0 && down === 0) {
+      this.#agentX[agent] = to.x;
+      this.#agentY[agent] = to.y;
+      this.#lay(agent, from, to);
+      return;
+    }
+    if (!this.#fieldBeyond(across, down)) {
+      this.#heading[agent] = this.#draws.next() * Math.PI * 2;
+      return;
+    }
+    this.#leave(agent, from, to);
+  }
+
+  // The agent let go and kept in `leavers`; its step is laid as far as the plane goes, by a scout not at all (it smells nothing past it)
+  #leave(agent: number, from: Point, to: Point): void {
+    if (!this.#scout[agent]) {
+      recordTraffic(this.#traffic, GRID, from, to);
+    }
+    this.#gone[agent] = 1;
+    this.#leavers.push({
+      x: to.x / GRID,
+      y: to.y / GRID,
+      heading: cellAt(this.#heading, agent),
+      homeX: cellAt(this.#homeX, agent) / GRID,
+      homeY: cellAt(this.#homeY, agent) / GRID,
+      age: this.#quanta - cellAt(this.#bornAt, agent),
+      scout: this.#scout[agent] === 1,
+      tint: this.#agentTinted[agent] ? this.#tintOf(agent) : undefined,
+    });
+  }
+
+  #tintOf(agent: number): Tint {
+    return [
+      cellAt(this.#agentTint, agent * 3),
+      cellAt(this.#agentTint, agent * 3 + 1),
+      cellAt(this.#agentTint, agent * 3 + 2),
+    ];
+  }
+
+  // What a step into `to`, a cell of the plane, leaves: traffic and a deposit, and the agent's color
+  #lay(agent: number, from: Point, to: Point): void {
     const cell = Math.floor(to.y) * GRID + Math.floor(to.x);
     if (this.#scout[agent] && this.#othersFood(agent, cell, to) < SCOUT_SCENT) {
       return; // a scout searching: nothing laid
@@ -346,6 +468,11 @@ function addFood(food: Float32Array, { x, y }: { x: number; y: number }, rules: 
   }
 }
 
+// How far a food is laid from its place, in planes (1 the plane's width): the tiles it reaches are the ones within
+export function foodReach(rules: TrailRules): number {
+  return foodShape(rules).reach / GRID;
+}
+
 // A food's shape under the rules, their own where they say, else the hearth's and scent's below
 function foodShape(rules: TrailRules): FoodShape {
   const scentWidth = rules.scentReach === undefined ? SCENT.width : rules.scentReach ** 2;
@@ -381,6 +508,14 @@ function diffuseAndFade(trail: Float32Array, scratch: Float32Array, fade: number
       trail[row * GRID + column] = cellAt(scratch, row * GRID + column);
     }
   }
+}
+
+// Which side of the plane a place in cells is past: -1 before it, 1 beyond it, 0 within it
+function sideOf(place: number): -1 | 0 | 1 {
+  if (place < 0) {
+    return -1;
+  }
+  return place >= GRID ? 1 : 0;
 }
 
 function cellAt(cells: Readonly<Float32Array>, index: number): number {

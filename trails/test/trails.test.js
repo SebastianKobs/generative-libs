@@ -1,7 +1,7 @@
 // Trails (mockup/src/libs/generative/trails/): a slime mould's agents on a field, food drawing them, seeds letting more loose
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { TRAFFIC_GRID, TrailField } from '../index.ts';
+import { TRAFFIC_GRID, TrailField, TrailTiles } from '../index.ts';
 import { seededRandomness } from '../../randomness/test/seeded-randomness.js';
 
 const SEEDS = [1, 2, 3, 4, 5, 6];
@@ -391,4 +391,278 @@ test("a seed's own agents count overrides perSeed, even to none", () => {
   none.seed(0.5, 0.5, undefined, 0);
   none.advanceTo(4);
   assert.equal(total(none.traffic), 0, 'fewer than perSeed');
+});
+
+// ---------- fields handing agents over: edges that pass an agent out, tiles that take it in ----------
+
+const PASSING = { ...SENSE, edges: 'pass' };
+const tilesOf = (seed, rules = PASSING, wrapAcross) => new TrailTiles(rules, seededRandomness(seed), wrapAcross);
+const fieldAt = (tiles, across, down) =>
+  tiles.fields.find(({ tile }) => tile.across === across && tile.down === down)?.field;
+const RED = [0.8, 0.2, 0.1];
+// the traffic along a tile's left edge, where an agent crossing from the tile before lands
+const LEFT_STRIP = { x0: 0, x1: 0.02, y0: 0, y1: 1 };
+const RIGHT_STRIP = { x0: 0.98, x1: 1, y0: 0, y1: 1 };
+
+test("with edges 'pass' an agent stepping past the plane is let go and kept with its place, heading, home, age, scout and color", () => {
+  const field = new TrailField(PASSING, seededRandomness(1));
+  field.seed(0.999, 0.5, RED);
+  field.advanceTo(2);
+  assert.ok(field.leavers.length > 0);
+  for (const leaver of field.leavers) {
+    assert.ok(leaver.x < 0 || leaver.x >= 1 || leaver.y < 0 || leaver.y >= 1, 'it stands past the plane');
+    assert.ok(leaver.x > -0.05 && leaver.x < 1.05 && leaver.y > -0.05 && leaver.y < 1.05, 'one step past');
+    assert.deepEqual(leaver.tint, RED.map(Math.fround)); // kept as the field keeps it, in 32 bits
+    assert.equal(leaver.scout, false);
+    assert.ok(Math.abs(leaver.homeX - 0.999) < 0.02 && Math.abs(leaver.homeY - 0.5) < 0.02, 'its home kept');
+    assert.ok(Number.isFinite(leaver.heading) && leaver.age >= 0);
+  }
+  field.clearLeavers();
+  assert.equal(field.leavers.length, 0);
+});
+
+test("'turn' is what a field does if edges isn't said: its agents never leave, and the traffic is as before", () => {
+  const unsaid = fieldOf(1, SENSE);
+  const turning = fieldOf(1, { ...SENSE, edges: 'turn' });
+  for (const field of [unsaid, turning]) {
+    field.seed(0.999, 0.5);
+    field.advanceTo(8);
+    assert.equal(field.leavers.length, 0);
+  }
+  assert.ok(total(unsaid.traffic) > 0);
+  assert.ok(sameTraffic(unsaid.traffic, turning.traffic));
+});
+
+test('an agent crossing a seam lands in the field beyond with its color, and the step is traffic in both fields', () => {
+  const tiles = tilesOf(1);
+  tiles.advanceTo(0);
+  tiles.seed(0.98, 0.5, RED, 12);
+  tiles.seed(1.02, 0.5, undefined, 0); // the field beyond, made, with nobody in it
+  tiles.advanceTo(10);
+  const before = fieldAt(tiles, 0, 0);
+  const beyond = fieldAt(tiles, 1, 0);
+  assert.ok(massIn(beyond.traffic, { x0: 0, x1: 0.5, y0: 0, y1: 1 }) > 0, 'agents ran on in the field beyond');
+  assert.ok(
+    massIn(before.traffic, RIGHT_STRIP) > 0 && massIn(beyond.traffic, LEFT_STRIP) > 0,
+    'the seam is laid on both sides',
+  );
+  const laid = Array.from(beyond.tints.weight.keys()).filter((cell) => beyond.tints.weight[cell] > 1e-3);
+  assert.ok(laid.length > 0, 'the color came across');
+  for (const cell of laid) {
+    const { red, green, blue, weight } = beyond.tints;
+    [red, green, blue].forEach((sums, index) => assert.ok(Math.abs(sums[cell] / weight[cell] - RED[index]) < 1e-3));
+  }
+});
+
+test("a color's home is kept across a seam: its weight falls with the distance from where it was let loose, there as here", () => {
+  const maxWeightBeyond = (tintReach) => {
+    let most = 0;
+    for (const seed of SEEDS) {
+      const tiles = tilesOf(seed, { ...PASSING, tintReach });
+      tiles.advanceTo(0);
+      tiles.seed(0.875, 0.5, RED, 40); // 20 cells from the seam
+      tiles.seed(1.5, 0.5, undefined, 0);
+      tiles.advanceTo(12);
+      const beyond = fieldAt(tiles, 1, 0);
+      assert.ok(massIn(beyond.traffic, { x0: 0, x1: 0.3, y0: 0, y1: 1 }) > 0, 'agents crossed');
+      most = Math.max(most, ...beyond.tints.weight);
+    }
+    return most;
+  };
+  const everywhere = maxWeightBeyond(undefined);
+  const near = maxWeightBeyond(5);
+  assert.ok(near < 0.25 * everywhere, `reach 5: ${near}, everywhere: ${everywhere}`);
+});
+
+test('a scout keeps its flag and its home across a seam: it smells its own plant beyond as nothing, and lays no trail there', () => {
+  const trafficBeyond = (rules, { food }) => {
+    let sum = 0;
+    for (const seed of SEEDS) {
+      const tiles = tilesOf(seed, { ...PASSING, hearth: 4, scent: 0.5, ...rules });
+      tiles.advanceTo(0);
+      if (food) {
+        tiles.food(0.85, 0.5); // laid in the tile beyond too, as its reach overlaps it
+      }
+      tiles.seed(1.5, 0.5, undefined, 0); // the field beyond, with nobody let loose in it
+      tiles.seed(0.85, 0.5, undefined, 20);
+      tiles.advanceTo(10);
+      sum += total(fieldAt(tiles, 1, 0).traffic);
+    }
+    return sum;
+  };
+  const others = trafficBeyond({ scouts: 0, hearth: 0, scent: 0 }, { food: false });
+  const scouts = trafficBeyond({ scouts: 1 }, { food: true });
+  assert.ok(others > 0, 'agents that are not scouts cross');
+  assert.ok(scouts < 0.02 * others, `scouts ${scouts}, others ${others}`);
+});
+
+test('an agent leaving into a tile with no field turns away: no field is made, nobody crosses', () => {
+  const tiles = tilesOf(1);
+  tiles.advanceTo(0);
+  tiles.seed(0.99, 0.5, undefined, 12);
+  tiles.seed(0.5, 0.01, undefined, 12);
+  tiles.advanceTo(10);
+  assert.equal(tiles.fields.length, 1);
+  const only = fieldAt(tiles, 0, 0);
+  assert.ok(total(only.traffic) > 0);
+  assert.equal(only.leavers.length, 0);
+});
+
+test('where the tiles wrap round, an agent leaving the last tile lands in the first, across and down', () => {
+  const landed = (place, strip) => {
+    const tiles = tilesOf(2, PASSING, 2);
+    tiles.advanceTo(0);
+    tiles.seed(0.5, 0.5, undefined, 0); // tile 0,0, with nobody in it
+    tiles.seed(place.x, place.y, undefined, 20);
+    tiles.advanceTo(8);
+    return massIn(fieldAt(tiles, 0, 0).traffic, strip);
+  };
+  const across = landed({ x: 1.98, y: 0.5 }, { x0: 0, x1: 0.2, y0: 0, y1: 1 });
+  const down = landed({ x: 0.5, y: 1.98 }, { x0: 0, x1: 1, y0: 0, y1: 0.2 });
+  assert.ok(across > 0, 'across');
+  assert.ok(down > 0, 'down');
+  const wrongWay = (place) => {
+    const tiles = tilesOf(2, PASSING);
+    tiles.advanceTo(0);
+    tiles.seed(0.5, 0.5, undefined, 0);
+    tiles.seed(place.x, place.y, undefined, 20);
+    tiles.advanceTo(8);
+    return total(fieldAt(tiles, 0, 0).traffic);
+  };
+  assert.equal(wrongWay({ x: 1.98, y: 0.5 }), 0, 'with no wrap, tile 2 is no field: nothing comes back');
+});
+
+test("a food near an edge is laid in the tile beyond too, in that tile's own plane; one far from every edge in its tile only", () => {
+  const tiles = tilesOf(1);
+  tiles.advanceTo(0);
+  tiles.food(0.9, 0.5);
+  assert.deepEqual(
+    tiles.fields.map(({ tile }) => [tile.across, tile.down]),
+    [
+      [0, 0],
+      [1, 0],
+    ],
+  );
+  const farOff = tilesOf(1);
+  farOff.food(0.5, 0.5);
+  assert.equal(farOff.fields.length, 1);
+  const corner = tilesOf(1);
+  corner.food(0.95, 0.95);
+  assert.equal(corner.fields.length, 4, 'a corner reaches three more tiles');
+});
+
+test('the food laid beyond the seam draws agents there: a hearth across the seam holds the traffic of agents let loose beside it', () => {
+  const rules = { ...PASSING, hearth: 8, hearthReach: 16, scent: 0 };
+  const nearSeam = (told) => {
+    let mass = 0;
+    for (const seed of SEEDS) {
+      const tiles = tilesOf(seed, rules);
+      tiles.advanceTo(0);
+      told(tiles);
+      tiles.seed(1.04, 0.5, undefined, 6);
+      tiles.advanceTo(20);
+      mass += massIn(fieldAt(tiles, 1, 0).traffic, { x0: 0, x1: 0.06, y0: 0.4, y1: 0.6 });
+    }
+    return mass;
+  };
+  const withFood = nearSeam((tiles) => tiles.food(0.98, 0.5));
+  const without = nearSeam(() => undefined);
+  assert.ok(withFood > 1.5 * without, `food ${withFood}, none ${without}`);
+});
+
+test('a food taken away is taken from every tile it was laid in', () => {
+  const rules = { ...PASSING, hearth: 8, hearthReach: 16, scent: 0 };
+  const nearSeam = (told) => {
+    let mass = 0;
+    for (const seed of SEEDS) {
+      const tiles = tilesOf(seed, rules);
+      tiles.advanceTo(0);
+      told(tiles);
+      tiles.seed(1.04, 0.5, undefined, 6);
+      tiles.advanceTo(20);
+      mass += massIn(fieldAt(tiles, 1, 0).traffic, { x0: 0, x1: 0.06, y0: 0.4, y1: 0.6 });
+    }
+    return mass;
+  };
+  const kept = nearSeam((tiles) => tiles.food(0.98, 0.5));
+  const gone = nearSeam((tiles) => {
+    tiles.food(0.98, 0.5);
+    tiles.foodGone(0.98, 0.5);
+  });
+  assert.ok(gone < 0.5 * kept, `gone ${gone}, kept ${kept}`);
+});
+
+test('a seed lets agents loose in its own tile only, whatever it reaches', () => {
+  const tiles = tilesOf(1, { ...PASSING, perSeed: 4 });
+  tiles.advanceTo(0);
+  tiles.seed(1.5, 0.5);
+  tiles.advanceTo(2);
+  assert.equal(tiles.fields.length, 1);
+  assert.deepEqual(tiles.fields[0].tile, { across: 1, down: 0 });
+  assert.ok(total(tiles.fields[0].field.traffic) > 0);
+});
+
+// events across two tiles and their seam: [beat, 'food' | 'seed', x, y] in tile units
+const TOLD_ACROSS = [
+  [0, 'food', 0.9, 0.5],
+  [0.5, 'food', 1.2, 0.5],
+  [1, 'seed', 0.9, 0.5],
+  [2, 'seed', 1.2, 0.5],
+  [3.5, 'seed', 0.95, 0.52],
+  [6, 'seed', 1.05, 0.48],
+];
+
+test('the same events at the same beats give the same traffic in every tile, in one go or in small steps', () => {
+  for (const seed of SEEDS.slice(0, 3)) {
+    const whole = runThrough(tilesOf(seed), TOLD_ACROSS, inOneGo);
+    const pieces = runThrough(tilesOf(seed), TOLD_ACROSS, inSmallSteps);
+    whole.advanceTo(12);
+    for (let beat = 7; beat < 12; beat += 0.07) {
+      pieces.advanceTo(beat);
+    }
+    pieces.advanceTo(12);
+    assert.equal(whole.fields.length, 2);
+    assert.equal(pieces.fields.length, 2);
+    assert.ok(massIn(whole.fields[1].field.traffic, { x0: 0, x1: 1, y0: 0, y1: 1 }) > 0);
+    whole.fields.forEach(({ field }, at) => {
+      assert.ok(sameTraffic(field.traffic, pieces.fields[at].field.traffic), `seed ${seed}, tile ${at}`);
+    });
+  }
+});
+
+test('rules set on the tiles reach every field, and each tile draws from a stream of its own', () => {
+  const tiles = tilesOf(1);
+  tiles.advanceTo(0);
+  tiles.seed(0.5, 0.5, undefined, 0);
+  tiles.seed(1.5, 0.5, undefined, 0);
+  tiles.rules = { ...PASSING, perSeed: 3 };
+  assert.equal(tiles.rules.perSeed, 3);
+  for (const { field } of tiles.fields) {
+    assert.equal(field.rules.perSeed, 3);
+  }
+  const alone = tilesOf(1);
+  alone.advanceTo(0);
+  alone.seed(1.5, 0.5);
+  const beside = tilesOf(1);
+  beside.advanceTo(0);
+  beside.seed(0.5, 0.5);
+  beside.seed(1.5, 0.5);
+  for (const each of [alone, beside]) {
+    each.advanceTo(3);
+  }
+  assert.ok(
+    sameTraffic(fieldAt(alone, 1, 0).traffic, fieldAt(beside, 1, 0).traffic),
+    'a tile beside changes nothing here',
+  );
+});
+
+test('a tile made late runs from the beat the tiles have reached, and costs nothing for the beats before', () => {
+  const tiles = tilesOf(1);
+  const before = performance.now();
+  tiles.advanceTo(2000);
+  tiles.seed(0.5, 0.5);
+  assert.ok(performance.now() - before < 500);
+  tiles.advanceTo(2004);
+  assert.equal(tiles.fields[0].field.quanta, 4008);
+  assert.ok(total(tiles.fields[0].field.traffic) > 0);
 });
