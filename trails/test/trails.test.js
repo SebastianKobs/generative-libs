@@ -1382,3 +1382,150 @@ test('the awake test is read at each call: a field woken runs again, and without
   tiles.advanceTo(4, onlyAt(0, 0));
   assert.ok(total(field.traffic) > 0, 'it ran');
 });
+
+// ---------- threads run into a food's centre, not past it; a plant's color kept near it ----------
+
+// Glow's mould: its genes and lifetimes, under which threads ring a quiet food rather than run into it
+const GLOWING = {
+  sense: 7,
+  sensorAngle: 0.6,
+  turn: 0.35,
+  fade: 0.965,
+  perSeed: 3,
+  scent: 0.25,
+  scentReach: 40,
+  hearth: 6,
+  hearthReach: 6,
+  lifetime: 96,
+  scouts: 0.2,
+  scoutLifetime: 32,
+  tintReach: 40,
+  starveAfter: 96,
+};
+// two busy foods, and a quiet one off the line between them, 13 cells from it; each seeded every beat, the quiet one with one agent
+const BUSY = [
+  { x: 0.25, y: 0.5, agents: 3, tint: [1, 0, 0] },
+  { x: 0.75, y: 0.5, agents: 3, tint: [0, 0, 1] },
+];
+const QUIET = { x: 0.5, y: 0.42, agents: 1, tint: [0, 1, 0] };
+// the mean of `cells`, a grid `side` cells a side over the plane, by distance from `at`, in the field's cells: within each band
+function meanByDistance(cells, at, bands) {
+  const side = Math.sqrt(cells.length);
+  const perFieldCell = side / TrailField.grid;
+  const sums = bands.map(() => 0);
+  const counts = bands.map(() => 0);
+  cells.forEach((value, cell) => {
+    const across = ((cell % side) + 0.5) / perFieldCell - at.x * TrailField.grid;
+    const down = (Math.floor(cell / side) + 0.5) / perFieldCell - at.y * TrailField.grid;
+    const distance = Math.hypot(across, down);
+    const band = bands.findIndex(([from, to]) => distance >= from && distance < to);
+    if (band >= 0) {
+      sums[band] += value;
+      counts[band]++;
+    }
+  });
+  return sums.map((sum, band) => sum / counts[band]);
+}
+// the three foods run for 60 beats under `rules`, over three randomnesses
+function plantsRun(rules, seed) {
+  const field = fieldOf(seed, { ...GLOWING, ...rules });
+  const plants = [...BUSY, QUIET];
+  for (const { x, y } of plants) {
+    field.food(x, y);
+  }
+  for (let beat = 0; beat < 60; beat++) {
+    for (const { x, y, tint, agents } of plants) {
+      field.seed(x, y, tint, agents);
+    }
+    field.advanceTo(beat + 1);
+  }
+  return field;
+}
+// the traffic round the quiet food, summed over `seeds`: at its centre (2 cells), on a ring round it (2 to 4), the ring's outside
+// (4 to 6) and beyond its hearth (8 to 20)
+function trafficRoundQuiet(rules, seeds = SEEDS.slice(0, 3)) {
+  const bands = [
+    [0, 2],
+    [2, 4],
+    [4, 6],
+    [8, 20],
+  ];
+  const summed = [0, 0, 0, 0];
+  for (const seed of seeds) {
+    meanByDistance(plantsRun(rules, seed).traffic, QUIET, bands).forEach((mean, band) => (summed[band] += mean));
+  }
+  const [centre, ring, ringOutside, beyond] = summed;
+  return { centre, ring, ringOutside, beyond };
+}
+
+test("an agent's sensors close in by senseInHearth at a food's centre: the traffic round a quiet food peaks at its centre, not on a ring", () => {
+  const before = trafficRoundQuiet({});
+  assert.ok(before.ring > 0.9 * before.centre, `before: ring ${before.ring}, centre ${before.centre}`);
+  const closing = trafficRoundQuiet({ senseInHearth: 0.7 });
+  assert.ok(closing.ring < 0.75 * closing.centre, `closing: ring ${closing.ring}, centre ${closing.centre}`);
+});
+
+test("an agent passing within turnBackWithin cells of a food's centre turns back there: the ring thins, and agents still leave", () => {
+  // over six randomnesses, and the ring 2 to 6 cells: over three, one ran as many round the centre either way
+  const passing = trafficRoundQuiet({ senseInHearth: 0.7 }, SEEDS);
+  const turning = trafficRoundQuiet({ senseInHearth: 0.7, turnBackWithin: 3 }, SEEDS);
+  const ringShare = ({ centre, ring, ringOutside }) => (ring + ringOutside) / centre;
+  assert.ok(
+    ringShare(turning) < 0.85 * ringShare(passing),
+    `turning ${ringShare(turning)}, passing ${ringShare(passing)}`,
+  );
+  assert.ok(turning.beyond > 0.5 * passing.beyond, `beyond: turning ${turning.beyond}, passing ${passing.beyond}`);
+});
+
+test('a turn back changes nothing where the rules leave it out, and the senses close in on no food', () => {
+  const field = (rules) => {
+    const run = fieldOf(1, { ...SENSE, ...rules });
+    run.seed(0.5, 0.5);
+    run.advanceTo(10);
+    return run.traffic;
+  };
+  assert.ok(sameTraffic(field({}), field({ senseInHearth: 0.7, turnBackWithin: 3 })), 'no food: as before');
+});
+
+// the share of the weight laid in each plant's own channel round it, at 0 to 8 cells and 24 to 40, over three randomnesses
+function ownColorRound(rules) {
+  const bands = [
+    [0, 8],
+    [24, 40],
+  ];
+  const own = { near: 0, far: 0 };
+  const weights = { near: 0, far: 0 };
+  for (const seed of SEEDS.slice(0, 3)) {
+    const { green, weight } = plantsRun({ tintGrid: 80, ...rules }, seed).tints;
+    const [greenNear, greenFar] = meanByDistance(green, QUIET, bands);
+    const [weightNear, weightFar] = meanByDistance(weight, QUIET, bands);
+    own.near += greenNear;
+    own.far += greenFar;
+    weights.near += weightNear;
+    weights.far += weightFar;
+  }
+  return { near: own.near / weights.near, far: own.far / weights.far, weightFar: weights.far };
+}
+
+test("an agent's color counts tintGuard times within tintGuardReach of where it was let loose: a quiet plant's own color holds", () => {
+  const open = ownColorRound({});
+  const guarded = ownColorRound({ tintGuard: 8, tintGuardReach: 10 });
+  assert.ok(guarded.near > 1.8 * open.near, `near: guarded ${guarded.near}, open ${open.near}`);
+  assert.ok(
+    guarded.weightFar > 0.8 * open.weightFar,
+    `the weight far off kept: ${guarded.weightFar}, ${open.weightFar}`,
+  );
+});
+
+test('a guard changes no trail, and none is a guard of 1', () => {
+  const run = (rules) => {
+    const field = fieldOf(1, { ...SENSE, ...rules });
+    field.seed(0.5, 0.5, RED);
+    field.advanceTo(10);
+    return field;
+  };
+  const open = run({});
+  const guarded = run({ tintGuard: 8, tintGuardReach: 10 });
+  assert.ok(sameTraffic(open.traffic, guarded.traffic));
+  assert.ok(sameTraffic(open.tints.weight, run({ tintGuard: 1, tintGuardReach: 10 }).tints.weight));
+});

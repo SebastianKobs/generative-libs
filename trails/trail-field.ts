@@ -20,6 +20,12 @@ import { Traffic } from './traffic.ts';
 //   scoutLifetime: how many quanta a scout runs before it's let go (the lifetime if not said)
 //   tintReach: how far from where it was let loose an agent's color counts, in the field's cells, to 1/e (all the way if not said):
 //     so a thread shows the color of the plant nearest, not the one with the most agents
+//   senseInHearth: how far an agent's sensors close in at a food's centre, 0 to 1 (none if not said), by the share of the hearth's
+//     height where it stands: near a food, its sensors see the hearth's peak, not past it, so it runs into the food, not round it
+//   turnBackWithin: an agent passing within this many cells of a food's centre turns back there, scattered a little (never if not
+//     said): a stream ends under the food, not past it. Turned, it doesn't turn back again for TURN_BACK_QUANTA, or it'd be held
+//   tintGuard: how many times an agent's color counts where it was let loose (1 if not said), so another plant's agents must be
+//     that many more to override it there; falling to 1 + (tintGuard - 1) / e at tintGuardReach cells (10 if not said)
 //   starveAfter: how many quanta an agent runs without standing in a food's hearth before it's let go (for ever if not said): so a
 //     stream leading to no food dies back, while one between foods lives on, its agents fed at each end
 //   trailPasses, tintPasses: how many times a quantum the trail and the colors diffuse and fade (once a step, 4, if not said):
@@ -43,6 +49,10 @@ export interface TrailRules {
   readonly scouts?: number;
   readonly scoutLifetime?: number;
   readonly tintReach?: number;
+  readonly senseInHearth?: number;
+  readonly turnBackWithin?: number | undefined;
+  readonly tintGuard?: number;
+  readonly tintGuardReach?: number;
   readonly starveAfter?: number;
   readonly trailPasses?: number;
   readonly tintPasses?: number;
@@ -131,6 +141,9 @@ const SEED_SCATTER = 3; // cells a seed's agents start apart
 // a pass for several steps takes as many times this: spread as far, as a blur's spread adds up step by step
 const GIVEN_BY_NEIGHBOUR = 0.015;
 const EDGE_MARGIN = 1; // cells from the edge an agent turns away
+const TURN_BACK_QUANTA = 2; // quanta after turning back before an agent turns back again: out of the hearth by then
+const TURN_BACK_SCATTER = 1; // radians a turn back is scattered over, so the streams out of a food fan a little
+const TINT_GUARD_REACH = 10; // cells to which a color's guard falls to 1/e, if the rules don't say
 const SCOUT_SCENT = 0.01; // what a scout must smell of another food where it steps to lay its trail there
 const FADED = 1e-4; // a trace this weak is gone: a traffic pass is 0.22, and a byte of it rounds to 0
 
@@ -156,6 +169,8 @@ export class TrailField {
   readonly #heading = new Float32Array(MAX_AGENTS);
   readonly #bornAt = new Float32Array(MAX_AGENTS); // the quantum each agent was let loose in
   readonly #fedAt = new Float32Array(MAX_AGENTS); // the quantum each last stood in a food's hearth: let loose at one, at first
+  // the quantum each last turned back at a food's centre; not carried across a seam: turned, it walks away from the centre
+  readonly #turnedBackAt = new Float32Array(MAX_AGENTS);
   readonly #homeX = new Float32Array(MAX_AGENTS); // where each was let loose, in cells: a scout doesn't smell the food there
   readonly #homeY = new Float32Array(MAX_AGENTS);
   readonly #scout = new Uint8Array(MAX_AGENTS); // 1 for a scout
@@ -167,6 +182,8 @@ export class TrailField {
   readonly #leavers: Traveller[] = [];
   readonly #fieldBeyond: FieldBeyond;
   #rules: TrailRules;
+  #shape: FoodShape; // a food's shape under the rules, worked out once they change: read at every step
+  #turnBackFood: number; // the food at `turnBackWithin` of a food's centre, under the rules; never reached if they don't say
   #agents = 0;
   #oldest = 0; // the next agent to be let go once MAX_AGENTS are loose
   #quanta = 0;
@@ -183,6 +200,8 @@ export class TrailField {
   // (every side has one, smelling nothing, if not said)
   constructor(rules: TrailRules, randomness: Randomness, fieldBeyond: FieldBeyond = NOTHING_BEYOND) {
     this.#rules = rules;
+    this.#shape = foodShape(rules);
+    this.#turnBackFood = turnBackFood(rules, this.#shape);
     this.#draws = randomness.fork('agents');
     this.#fieldBeyond = fieldBeyond;
     this.#tintGrid = rules.tintGrid ?? GRID;
@@ -240,6 +259,8 @@ export class TrailField {
   // counts from the next quantum on
   set rules(rules: TrailRules) {
     this.#rules = rules;
+    this.#shape = foodShape(rules);
+    this.#turnBackFood = turnBackFood(rules, this.#shape);
     const tintGrid = rules.tintGrid ?? GRID;
     if (tintGrid !== this.#tintGrid) {
       this.#carryTintsOnto(tintGrid);
@@ -447,6 +468,7 @@ export class TrailField {
     this.#heading[slot] = traveller.heading;
     this.#bornAt[slot] = this.#quantaRun() - traveller.age;
     this.#fedAt[slot] = this.#quantaRun() - (traveller.sinceFood ?? traveller.age);
+    this.#turnedBackAt[slot] = -Infinity;
     this.#homeX[slot] = traveller.homeX * GRID;
     this.#homeY[slot] = traveller.homeY * GRID;
     this.#scout[slot] = traveller.scout ? 1 : 0;
@@ -463,6 +485,7 @@ export class TrailField {
     this.#heading[slot] = this.#draws.next() * Math.PI * 2;
     this.#bornAt[slot] = this.#quantaRun();
     this.#fedAt[slot] = this.#quantaRun();
+    this.#turnedBackAt[slot] = -Infinity;
     this.#homeX[slot] = x * GRID;
     this.#homeY[slot] = y * GRID;
     // drawn only where the rules have scouts, so a field without them draws as before
@@ -495,9 +518,10 @@ export class TrailField {
   #steer(agent: number): void {
     const { turn, sensorAngle } = this.#rules;
     const heading = cellAt(this.#heading, agent);
-    const ahead = this.#smellFrom(agent, heading);
-    const left = this.#smellFrom(agent, heading - sensorAngle);
-    const right = this.#smellFrom(agent, heading + sensorAngle);
+    const sense = this.#senseOf(agent);
+    const ahead = this.#smellFrom(agent, heading, sense);
+    const left = this.#smellFrom(agent, heading - sensorAngle, sense);
+    const right = this.#smellFrom(agent, heading + sensorAngle, sense);
     const coin = this.#draws.next();
     if (ahead > left && ahead > right) {
       return;
@@ -513,8 +537,22 @@ export class TrailField {
     }
   }
 
-  #smellFrom(agent: number, direction: number): number {
+  // How far ahead an agent smells, in cells: closed in by `senseInHearth` at the share of a hearth's height where it stands
+  #senseOf(agent: number): number {
     const sense = this.#rules.sense * SCALE;
+    const closeIn = this.#rules.senseInHearth;
+    if (closeIn === undefined) {
+      return sense;
+    }
+    const here = { x: cellAt(this.#agentX, agent), y: cellAt(this.#agentY, agent) };
+    const inHearth = Math.min(1, this.#foodAt(here) / this.#shape.hearthHeight);
+    return sense * (1 - closeIn * inHearth);
+  }
+  #foodAt({ x, y }: Point): number {
+    return cellAt(this.#food, Math.floor(y) * GRID + Math.floor(x));
+  }
+
+  #smellFrom(agent: number, direction: number, sense: number): number {
     const place = {
       x: cellAt(this.#agentX, agent) + Math.cos(direction) * sense,
       y: cellAt(this.#agentY, agent) + Math.sin(direction) * sense,
@@ -554,7 +592,7 @@ export class TrailField {
   // What a scout smells at a place: the food there but its home's, as food() would have laid it there
   #othersFood(home: Point, cell: number, { x, y }: Point): number {
     const distanceSquared = (x - home.x) ** 2 + (y - home.y) ** 2;
-    const homeFood = foodAt(foodShape(this.#rules), distanceSquared);
+    const homeFood = foodAt(this.#shape, distanceSquared);
     return Math.max(0, cellAt(this.#food, cell) - homeFood) * FOOD_WEIGHT;
   }
   #homeOf(agent: number): Point {
@@ -633,7 +671,8 @@ export class TrailField {
   // What a step into `to`, a cell of the plane, leaves: traffic and a deposit, and the agent's color
   #lay(agent: number, from: Point, to: Point): void {
     const cell = Math.floor(to.y) * GRID + Math.floor(to.x);
-    if (cellAt(this.#food, cell) >= foodShape(this.#rules).hearthHeight / 3) {
+    this.#turnBackPastCentre(agent, from, to);
+    if (cellAt(this.#food, cell) >= this.#shape.hearthHeight / 3) {
       this.#fedAt[agent] = this.#quantaRun(); // in a hearth: within its reach of a food's centre
     }
     if (this.#scout[agent] && this.#othersFood(this.#homeOf(agent), cell, to) < SCOUT_SCENT) {
@@ -657,6 +696,21 @@ export class TrailField {
     blue[cell] = cellAt(blue, cell) + laid * cellAt(this.#agentTint, agent * 3 + 2);
     weight[cell] = cellAt(weight, cell) + laid;
   }
+  // An agent that has just passed a food's centre, within `turnBackWithin`, turns back, unless it turned back lately.
+  // Passed: the food at `from` is more than a step behind and a step ahead, and at least the hearth's within that reach.
+  #turnBackPastCentre(agent: number, from: Point, to: Point): void {
+    const here = this.#foodAt(from);
+    if (here < this.#turnBackFood || this.#quantaRun() - cellAt(this.#turnedBackAt, agent) < TURN_BACK_QUANTA) {
+      return;
+    }
+    const behind = { x: clampToPlane(2 * from.x - to.x), y: clampToPlane(2 * from.y - to.y) };
+    if (this.#foodAt(behind) >= here || this.#foodAt(to) >= here) {
+      return;
+    }
+    const scatter = (this.#draws.next() - 0.5) * TURN_BACK_SCATTER;
+    this.#heading[agent] = cellAt(this.#heading, agent) + Math.PI + scatter;
+    this.#turnedBackAt[agent] = this.#quantaRun();
+  }
   // An agent `starveAfter` quanta without food: let go.
   // Laying a fainter trail instead doesn't stop a stream into nowhere: steering compares the sides, not how strong they are,
   // so a faint stream on empty floor steers as well as a strong one
@@ -664,16 +718,21 @@ export class TrailField {
     const starveAfter = this.#rules.starveAfter ?? Infinity;
     return this.#quantaRun() - cellAt(this.#fedAt, agent) >= starveAfter;
   }
+  // How much an agent's color counts where it stands: less far from where it was let loose, by `tintReach`;
+  // `tintGuard` times near there, falling to 1 far off
   #tintNearHome(agent: number): number {
-    const reach = this.#rules.tintReach;
-    if (reach === undefined) {
+    const { tintReach, tintGuard } = this.#rules;
+    if (tintReach === undefined && tintGuard === undefined) {
       return 1;
     }
     const fromHome = Math.hypot(
       cellAt(this.#agentX, agent) - cellAt(this.#homeX, agent),
       cellAt(this.#agentY, agent) - cellAt(this.#homeY, agent),
     );
-    return Math.exp(-fromHome / reach);
+    const falling = tintReach === undefined ? 1 : Math.exp(-fromHome / tintReach);
+    const guardReach = this.#rules.tintGuardReach ?? TINT_GUARD_REACH;
+    const guard = 1 + ((tintGuard ?? 1) - 1) * Math.exp(-((fromHome / guardReach) ** 2));
+    return falling * guard;
   }
 }
 
@@ -729,6 +788,13 @@ function foodShape(rules: TrailRules): FoodShape {
     reach: Math.max(FOOD_REACH, 2 * Math.sqrt(scentWidth), 2 * Math.sqrt(hearthWidth)),
   };
 }
+// The food at `turnBackWithin` of a food's centre: an agent passing where it's at least this turns back; Infinity if not said
+function turnBackFood(rules: TrailRules, shape: FoodShape): number {
+  if (rules.turnBackWithin === undefined) {
+    return Infinity;
+  }
+  return shape.hearthHeight * Math.exp(-(rules.turnBackWithin ** 2) / shape.hearthWidth);
+}
 // A food's hearth and scent at a distance from it, squared, in cells; none past its reach, as it's laid
 function foodAt(shape: FoodShape, distanceSquared: number): number {
   if (distanceSquared > shape.reach ** 2 * 2) {
@@ -768,6 +834,11 @@ function sideOf(place: number): -1 | 0 | 1 {
     return -1;
   }
   return place >= GRID ? 1 : 0;
+}
+
+// A place in cells kept within the plane: a step behind an agent at the edge
+function clampToPlane(place: number): number {
+  return Math.min(GRID - 1, Math.max(0, place));
 }
 
 function cellAt(cells: Readonly<Float32Array>, index: number): number {
