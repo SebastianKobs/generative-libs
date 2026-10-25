@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { TRAFFIC_GRID, TrailField, TrailTiles } from '../index.ts';
-import { recordTraffic } from '../traffic.ts';
+import { Traffic } from '../traffic.ts';
 import { seededRandomness } from '../../randomness/test/seeded-randomness.js';
 
 const SEEDS = [1, 2, 3, 4, 5, 6];
@@ -967,8 +967,9 @@ function rowOf(traffic, row) {
 
 test('a line across the plane leaves as much traffic in the edge cells as in the middle: no dark line at a seam', () => {
   const grid = TrailField.grid;
-  const across = new Float32Array(TRAFFIC_GRID * TRAFFIC_GRID);
-  recordTraffic(across, grid, { x: 0, y: grid / 2 + 0.3 }, { x: grid, y: grid / 2 + 0.3 });
+  const lineAcross = new Traffic(grid);
+  lineAcross.record({ x: 0, y: grid / 2 + 0.3 }, { x: grid, y: grid / 2 + 0.3 });
+  const across = lineAcross.values;
   const middle = columnOf(across, TRAFFIC_GRID / 2);
   for (const edge of [0, TRAFFIC_GRID - 1]) {
     assert.ok(
@@ -976,8 +977,9 @@ test('a line across the plane leaves as much traffic in the edge cells as in the
       `column ${edge}: ${columnOf(across, edge)} against ${middle}`,
     );
   }
-  const down = new Float32Array(TRAFFIC_GRID * TRAFFIC_GRID);
-  recordTraffic(down, grid, { x: grid / 2 + 0.3, y: 0 }, { x: grid / 2 + 0.3, y: grid });
+  const lineDown = new Traffic(grid);
+  lineDown.record({ x: grid / 2 + 0.3, y: 0 }, { x: grid / 2 + 0.3, y: grid });
+  const down = lineDown.values;
   for (const edge of [0, TRAFFIC_GRID - 1]) {
     assert.ok(
       Math.abs(rowOf(down, edge) - middle) < 0.05 * middle,
@@ -988,10 +990,89 @@ test('a line across the plane leaves as much traffic in the edge cells as in the
 
 test("a step's part past the plane leaves nothing in this field's traffic: the field beyond lays it", () => {
   const grid = TrailField.grid;
-  const traffic = new Float32Array(TRAFFIC_GRID * TRAFFIC_GRID);
-  recordTraffic(traffic, grid, { x: grid + 0.2, y: 40 }, { x: grid + 3, y: 41 });
-  recordTraffic(traffic, grid, { x: 40, y: -3 }, { x: 41, y: -0.2 });
-  assert.equal(total(traffic), 0);
+  const traffic = new Traffic(grid);
+  traffic.record({ x: grid + 0.2, y: 40 }, { x: grid + 3, y: 41 });
+  traffic.record({ x: 40, y: -3 }, { x: 41, y: -0.2 });
+  assert.equal(total(traffic.values), 0);
+});
+
+// ---------- the traffic faded as one gain ----------
+
+// steps along a few lines, each recorded between fades, as a field's quanta lay them
+const STEPS = [
+  [
+    { x: 10, y: 20 },
+    { x: 11, y: 20.5 },
+  ],
+  [
+    { x: 80, y: 80 },
+    { x: 80.7, y: 81 },
+  ],
+  [
+    { x: 10.5, y: 20.2 },
+    { x: 11.2, y: 20.9 },
+  ],
+];
+// the traffic faded quantum by quantum, `fades` times, a step recorded before each
+function fadedOver(fades, factor, readEvery = Infinity) {
+  const traffic = new Traffic(TrailField.grid);
+  for (let quantum = 0; quantum < fades; quantum++) {
+    const [from, to] = STEPS[quantum % STEPS.length];
+    traffic.record(from, to);
+    traffic.fade(factor);
+    if (quantum % readEvery === 0) {
+      void traffic.values; // read as a painting reads it
+    }
+  }
+  return traffic;
+}
+
+test('the traffic faded as one gain reads as if every cell were faded: each cell, and the strongest', () => {
+  const factor = 0.965 ** 4;
+  const fades = 12;
+  const traffic = fadedOver(fades, factor);
+  // the reference: each step's own traffic, faded as many times as it has been since
+  const reference = new Float32Array(TRAFFIC_GRID * TRAFFIC_GRID);
+  for (let quantum = 0; quantum < fades; quantum++) {
+    const one = new Traffic(TrailField.grid);
+    one.record(...STEPS[quantum % STEPS.length]);
+    one.values.forEach((value, cell) => {
+      reference[cell] += value * factor ** (fades - quantum);
+    });
+  }
+  let strongest = 0;
+  traffic.values.forEach((value, cell) => {
+    assert.ok(Math.abs(value - reference[cell]) < 1e-6, `cell ${cell}: ${value} against ${reference[cell]}`);
+    strongest = Math.max(strongest, value);
+  });
+  assert.ok(Math.abs(traffic.strongest - strongest) < 1e-7, `${traffic.strongest} against ${strongest}`);
+});
+
+test('the traffic faded for long stays right: the gain is brought back to 1 now and then, and the cells with it', () => {
+  const factor = 0.965 ** 4;
+  const traffic = fadedOver(400, factor);
+  const values = traffic.values;
+  assert.ok(values.every(Number.isFinite), 'no cell overflowed');
+  let strongest = 0;
+  values.forEach((value) => {
+    strongest = Math.max(strongest, value);
+  });
+  assert.ok(strongest > 0.05 && strongest < 1, `the last steps still there: ${strongest}`);
+  assert.ok(Math.abs(traffic.strongest - strongest) < 1e-7);
+});
+
+test('reading the traffic changes nothing that comes after: the same traffic read every quantum or never', () => {
+  const factor = 0.965 ** 4;
+  assert.ok(sameTraffic(fadedOver(300, factor, 1).values, fadedOver(300, factor).values));
+});
+
+test('the traffic cleared is empty, its strongest 0, and records afresh', () => {
+  const traffic = fadedOver(5, 0.5);
+  traffic.clear();
+  assert.equal(total(traffic.values), 0);
+  assert.equal(traffic.strongest, 0);
+  traffic.record(...STEPS[0]);
+  assert.ok(traffic.strongest > 0);
 });
 
 // ---------- what a debug map reads of a field and of the tiles (LOOK23e) ----------
@@ -1054,4 +1135,44 @@ test("each field's time for its last quantum in ms: measured for the fields that
   assert.ok(tiles.msOf(seeded) < 1000);
   assert.ok(tiles.msOf(fed) >= 0);
   assert.ok(tiles.msOf(seeded) > tiles.msOf(fed), 'one with no agents took less');
+});
+
+// ---------- the trail and the colors diffused fewer times a quantum ----------
+
+// a field's colors after a few quanta of a seed every beat at its middle, diffused `tintPasses` times a quantum
+function colorsOf(tintPasses) {
+  const field = fieldOf(3, { ...SENSE, tintPasses });
+  for (let beat = 0; beat < 6; beat++) {
+    field.seed(0.5, 0.5, RED);
+    field.advanceTo(beat + 1);
+  }
+  return field.tints.weight;
+}
+// how much color was laid, and how far it lies from where it was laid, on average (the root of its second moment)
+function weightAndSpread(weight) {
+  const grid = TrailField.grid;
+  let mass = 0;
+  let moment = 0;
+  weight.forEach((value, cell) => {
+    const dx = (cell % grid) - grid / 2;
+    const dy = Math.floor(cell / grid) - grid / 2;
+    mass += value;
+    moment += value * (dx * dx + dy * dy);
+  });
+  return { mass, spread: Math.sqrt(moment / mass) };
+}
+
+test('the colors diffused once a quantum weigh about as much and spread about as far as diffused at every step', () => {
+  const once = weightAndSpread(colorsOf(1));
+  const everyStep = weightAndSpread(colorsOf(4));
+  assert.ok(Math.abs(once.mass / everyStep.mass - 1) < 0.1, `weight ${once.mass} against ${everyStep.mass}`);
+  assert.ok(Math.abs(once.spread / everyStep.spread - 1) < 0.1, `spread ${once.spread} against ${everyStep.spread}`);
+});
+
+test('the passes not said are one a step, as before: the same colors as four passes said', () => {
+  assert.ok(sameTraffic(colorsOf(undefined), colorsOf(4)));
+});
+
+test('the colors diffused once a quantum differ from those diffused at every step: the passes are taken', () => {
+  assert.ok(!sameTraffic(colorsOf(1), colorsOf(4)));
 });
