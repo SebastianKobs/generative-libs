@@ -993,3 +993,65 @@ test("a step's part past the plane leaves nothing in this field's traffic: the f
   recordTraffic(traffic, grid, { x: 40, y: -3 }, { x: 41, y: -0.2 });
   assert.equal(total(traffic), 0);
 });
+
+// ---------- what a debug map reads of a field and of the tiles (LOOK23e) ----------
+
+test('a hand-over is counted out of the field that let the agents go and into the one that took them in', () => {
+  const tiles = tilesOf(1);
+  tiles.advanceTo(0);
+  tiles.seed(0.98, 0.5, RED, 12);
+  tiles.seed(1.02, 0.5, undefined, 0); // the field beyond, made, with nobody in it
+  let letOut = 0;
+  let tookIn = 0;
+  for (let quantum = 1; quantum <= 20; quantum++) {
+    tiles.advanceTo(quantum / QUANTA_A_BEAT);
+    letOut += fieldAt(tiles, 0, 0).letOut;
+    tookIn += fieldAt(tiles, 1, 0).tookIn;
+  }
+  assert.ok(letOut > 0, 'some agents left the first field');
+  assert.ok(tookIn > 0, 'the field beyond took in some');
+});
+
+test("a field's last quantum counts what it let out and took in, and nothing once it's idle", () => {
+  const field = new TrailField({ ...PASSING, lifetime: 4 }, seededRandomness(1));
+  assert.equal(field.letOut + field.tookIn, 0);
+  field.seed(0.999, 0.5, RED, 12);
+  field.advanceTo(0.5);
+  assert.ok(field.letOut > 0, 'agents left in the quantum run');
+  field.advanceTo(FADED_AFTER);
+  assert.equal(field.idle, true);
+  assert.equal(field.letOut, 0, 'a quantum skipped lets none out');
+  assert.equal(field.tookIn, 0);
+});
+
+test('the live agents: those the last step moved, none once they are let go; the strongest traffic, none once cleared', () => {
+  const field = fieldOf(1, LET_GO);
+  assert.equal(field.liveAgents, 0);
+  assert.equal(field.strongestTraffic, 0);
+  field.seed(0.5, 0.5);
+  field.advanceTo(2);
+  assert.equal(field.liveAgents, MANY, 'every agent let loose is running');
+  assert.ok(field.strongestTraffic > 0);
+  assert.equal(
+    field.strongestTraffic,
+    field.traffic.reduce((most, value) => Math.max(most, value), 0),
+    'the strongest cell of its traffic',
+  );
+  field.advanceTo(FADED_AFTER);
+  assert.equal(field.liveAgents, 0);
+  assert.equal(field.strongestTraffic, 0);
+});
+
+test("each field's time for its last quantum in ms: measured for the fields that ran, 0 for one that didn't", () => {
+  const tiles = tilesOf(1);
+  tiles.advanceTo(0);
+  tiles.seed(0.5, 0.5, RED, 12);
+  tiles.food(1.5, 0.5);
+  const [seeded, fed] = [fieldAt(tiles, 0, 0), fieldAt(tiles, 1, 0)];
+  assert.equal(tiles.msOf(seeded), 0, 'nothing run yet');
+  tiles.advanceTo(2);
+  assert.ok(tiles.msOf(seeded) > 0, 'a field with agents took time');
+  assert.ok(tiles.msOf(seeded) < 1000);
+  assert.ok(tiles.msOf(fed) >= 0);
+  assert.ok(tiles.msOf(seeded) > tiles.msOf(fed), 'one with no agents took less');
+});

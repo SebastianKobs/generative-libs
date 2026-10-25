@@ -159,6 +159,9 @@ export class TrailField {
   #oldest = 0; // the next agent to be let go once MAX_AGENTS are loose
   #quanta = 0;
   #liveAgents = 0; // the agents the last step moved: not let go, not handed on
+  #strongestTraffic = 0; // the strongest cell of the traffic after the last quantum
+  #letOut = 0; // the agents handed on to another field in the last quantum
+  #tookIn = 0; // the agents taken in from another field in the last quantum
   #settled = false; // no agent live and every trace faded, cleared: nothing to run until told
 
   // The agents' draws come from `randomness`, on a stream of their own.
@@ -182,6 +185,22 @@ export class TrailField {
   // none while the field has only had food
   get agentsLoose(): number {
     return this.#agents;
+  }
+  // the agents the last step moved: not let go, not handed on
+  get liveAgents(): number {
+    return this.#liveAgents;
+  }
+  // the strongest cell of the traffic after the last quantum run; 0 once the traces are cleared
+  get strongestTraffic(): number {
+    return this.#strongestTraffic;
+  }
+  // the agents handed on to the field beside in the last quantum run; 0 for a quantum skipped
+  get letOut(): number {
+    return this.#letOut;
+  }
+  // the agents taken in from the field beside in the last quantum run; 0 for a quantum skipped
+  get tookIn(): number {
+    return this.#tookIn;
   }
   // the field's cells a side, the tints' grid
   static get grid(): number {
@@ -231,6 +250,8 @@ export class TrailField {
     while (this.#quanta < target) {
       if (this.#isIdle()) {
         this.#quanta = target; // nothing to move, fade or draw: a late field costs nothing
+        this.#letOut = 0;
+        this.#tookIn = 0;
         return;
       }
       this.#runQuantum();
@@ -247,6 +268,8 @@ export class TrailField {
   }
 
   #runQuantum(): void {
+    this.#letOut = 0;
+    this.#tookIn = 0;
     for (const told of this.#told.splice(0)) {
       this.#apply(told);
     }
@@ -259,7 +282,8 @@ export class TrailField {
         strongest = name === 'weight' ? Math.max(strongest, strongestOfChannel) : strongest;
       }
     }
-    strongest = Math.max(strongest, fadeTraffic(this.#traffic, this.#rules.fade ** STEPS_PER_QUANTUM));
+    this.#strongestTraffic = fadeTraffic(this.#traffic, this.#rules.fade ** STEPS_PER_QUANTUM);
+    strongest = Math.max(strongest, this.#strongestTraffic);
     this.#quanta++;
     this.#settled = this.#liveAgents === 0 && strongest < FADED;
     if (this.#settled) {
@@ -271,6 +295,7 @@ export class TrailField {
   #clearTraces(): void {
     this.#trail.fill(0);
     this.#traffic.fill(0);
+    this.#strongestTraffic = 0;
     for (const channel of Object.values(this.#tints)) {
       channel.fill(0);
     }
@@ -299,6 +324,7 @@ export class TrailField {
 
   // Carries on as it was, nothing drawn; the step that brought it across is laid here as it was in the field it left
   #takeIn(traveller: Traveller): void {
+    this.#tookIn++;
     const slot = this.#freeSlot();
     const at = { x: traveller.x * GRID, y: traveller.y * GRID };
     this.#agentX[slot] = at.x;
@@ -461,6 +487,7 @@ export class TrailField {
       recordTraffic(this.#traffic, GRID, from, to);
     }
     this.#gone[agent] = 1;
+    this.#letOut++;
     this.#leavers.push({
       x: to.x / GRID,
       y: to.y / GRID,

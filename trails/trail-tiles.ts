@@ -28,6 +28,7 @@ export class TrailTiles {
   readonly #wrapAcross: number | undefined;
   readonly #made: TileField[] = []; // in the order they were made
   readonly #inOrder: TileField[] = []; // by tile, row by row: the order they're stepped in
+  readonly #quantumMs = new Map<TrailField, number>(); // each field's time for its last quantum
   #rules: TrailRules;
   #quanta = 0;
 
@@ -43,6 +44,10 @@ export class TrailTiles {
   }
   get rules(): TrailRules {
     return this.#rules;
+  }
+  // a field's time for the last quantum it was stepped in, in ms; 0 before it was
+  msOf(field: TrailField): number {
+    return this.#quantumMs.get(field) ?? 0;
   }
   // reaches every field, counting from its next quantum on
   set rules(rules: TrailRules) {
@@ -76,7 +81,9 @@ export class TrailTiles {
     while (this.#quanta < target) {
       this.#quanta++;
       for (const { field } of this.#inOrder) {
+        const started = performance.now(); // read only to measure, never for what a field draws
         field.advanceTo(this.#quanta * QUANTUM_BEATS);
+        this.#quantumMs.set(field, performance.now() - started);
       }
       this.#handOverLeavers();
     }
