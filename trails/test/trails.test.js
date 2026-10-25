@@ -778,3 +778,55 @@ test("a cell on the plane's border fades as every other cell does, the trail's a
   assert.equal(seen[1], 0, `the border's color faded: ${seen.join(', ')}`);
   assert.equal(field.idle, true);
 });
+
+// ---------- starving: an agent let go once it has run starveAfter quanta without standing in a food's hearth ----------
+
+const STARVING = { ...SENSE, hearth: 6, hearthReach: 6, starveAfter: 4 };
+// the traffic summed over several randomnesses, 1.5 beats after a seed (3 quanta) and 4 beats later (8 more)
+function trafficEarlyAndLate(rules, withFood) {
+  let early = 0;
+  let late = 0;
+  for (const seed of SEEDS) {
+    const field = fieldOf(seed, rules);
+    if (withFood) {
+      field.food(0.5, 0.5);
+    }
+    field.seed(0.5, 0.5);
+    field.advanceTo(1.5);
+    early += total(field.traffic);
+    field.advanceTo(5.5);
+    late += total(field.traffic);
+  }
+  return { early, late };
+}
+
+test('an agent with no food in reach is let go after starveAfter quanta: its traffic fades after; not said, it runs on', () => {
+  const starving = trafficEarlyAndLate(STARVING, false);
+  const unsaid = trafficEarlyAndLate({ ...STARVING, starveAfter: undefined }, false);
+  assert.ok(starving.late < 0.5 * starving.early, `starving ${starving.early} then ${starving.late}`);
+  assert.ok(unsaid.late > 0.5 * unsaid.early, `never starving ${unsaid.early} then ${unsaid.late}`);
+});
+
+test("an agent standing in a food's hearth is fed again: let loose on a food, its traffic runs on past starveAfter", () => {
+  const fed = trafficEarlyAndLate(STARVING, true);
+  const unfed = trafficEarlyAndLate(STARVING, false);
+  assert.ok(fed.late > 0.5 * fed.early, `fed ${fed.early} then ${fed.late}`);
+  assert.ok(fed.late > 3 * unfed.late, `fed ${fed.late}, unfed ${unfed.late}`);
+});
+
+test('the quanta since its last food go with an agent across a seam: one arriving starved is let go, one fed runs on', () => {
+  const leaving = new TrailField(PASSING, seededRandomness(1));
+  leaving.seed(0.999, 0.5);
+  leaving.advanceTo(2);
+  assert.ok(leaving.leavers.length > 0);
+  for (const leaver of leaving.leavers) {
+    assert.equal(leaver.sinceFood, leaver.age, 'no food on the way: as long since food as since it was let loose');
+  }
+  const afterArriving = (sinceFood) => {
+    const field = new TrailField(STARVING, seededRandomness(1));
+    field.arrive({ x: 0.5, y: 0.5, heading: 0, homeX: 0.2, homeY: 0.5, age: 1, sinceFood, scout: false });
+    field.advanceTo(2);
+    return total(field.traffic);
+  };
+  assert.ok(afterArriving(10) < 0.2 * afterArriving(0), 'arriving starved, it walks no further');
+});

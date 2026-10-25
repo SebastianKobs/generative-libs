@@ -20,6 +20,8 @@ import { fadeTraffic, recordTraffic, TRAFFIC_GRID } from './traffic.ts';
 //   scoutLifetime: how many quanta a scout runs before it's let go (the lifetime if not said)
 //   tintReach: how far from where it was let loose an agent's color counts, in the field's cells, to 1/e (all the way if not said):
 //     so a thread shows the color of the plant nearest, not the one with the most agents
+//   starveAfter: how many quanta an agent runs without standing in a food's hearth before it's let go (for ever if not said): so a
+//     stream leading to no food dies back, while one between foods lives on, its agents fed at each end
 //   edges: what the plane's edges do to an agent ('turn' if not said): 'turn' turns it away a cell inside; 'pass' lets it go once it steps
 //     past the plane, kept in `leavers` for whoever runs the field next to it (TrailTiles), unless nothing lies beyond: then it turns away
 export interface TrailRules {
@@ -36,10 +38,12 @@ export interface TrailRules {
   readonly scouts?: number;
   readonly scoutLifetime?: number;
   readonly tintReach?: number;
+  readonly starveAfter?: number;
   readonly edges?: 'turn' | 'pass';
 }
 // An agent as it passes from one field to the next: where it stands and its home, in the plane of the field it is handed to (0 to 1
-// across and down; a leaver's just past the plane it left), the heading it keeps, its age in quanta, and its color if it has one
+// across and down; a leaver's just past the plane it left), the heading it keeps, its age in quanta, the quanta since it last stood in a
+// food's hearth (its age if not said), and its color if it has one
 export interface Traveller {
   readonly x: number;
   readonly y: number;
@@ -47,6 +51,7 @@ export interface Traveller {
   readonly homeX: number;
   readonly homeY: number;
   readonly age: number;
+  readonly sinceFood?: number;
   readonly scout: boolean;
   readonly tint?: Tint | undefined;
 }
@@ -126,6 +131,7 @@ export class TrailField {
   readonly #agentY = new Float32Array(MAX_AGENTS);
   readonly #heading = new Float32Array(MAX_AGENTS);
   readonly #bornAt = new Float32Array(MAX_AGENTS); // the quantum each agent was let loose in
+  readonly #fedAt = new Float32Array(MAX_AGENTS); // the quantum each last stood in a food's hearth: let loose at one, at first
   readonly #homeX = new Float32Array(MAX_AGENTS); // where each was let loose, in cells: a scout doesn't smell the food there
   readonly #homeY = new Float32Array(MAX_AGENTS);
   readonly #scout = new Uint8Array(MAX_AGENTS); // 1 for a scout
@@ -291,6 +297,7 @@ export class TrailField {
     this.#agentY[slot] = at.y;
     this.#heading[slot] = traveller.heading;
     this.#bornAt[slot] = this.#quanta - traveller.age;
+    this.#fedAt[slot] = this.#quanta - (traveller.sinceFood ?? traveller.age);
     this.#homeX[slot] = traveller.homeX * GRID;
     this.#homeY[slot] = traveller.homeY * GRID;
     this.#scout[slot] = traveller.scout ? 1 : 0;
@@ -306,6 +313,7 @@ export class TrailField {
     this.#agentY[slot] = y * GRID + (this.#draws.next() - 0.5) * SEED_SCATTER;
     this.#heading[slot] = this.#draws.next() * Math.PI * 2;
     this.#bornAt[slot] = this.#quanta;
+    this.#fedAt[slot] = this.#quanta;
     this.#homeX[slot] = x * GRID;
     this.#homeY[slot] = y * GRID;
     // drawn only where the rules have scouts, so a field without them draws as before
@@ -324,7 +332,7 @@ export class TrailField {
         continue;
       }
       const age = this.#quanta - cellAt(this.#bornAt, agent);
-      if (age >= (this.#scout[agent] ? scoutLifetime : lifetime)) {
+      if (age >= (this.#scout[agent] ? scoutLifetime : lifetime) || this.#starved(agent)) {
         continue; // let go: its slot taken by the next one let loose, the oldest first
       }
       live++;
@@ -426,6 +434,7 @@ export class TrailField {
       homeX: cellAt(this.#homeX, agent) / GRID,
       homeY: cellAt(this.#homeY, agent) / GRID,
       age: this.#quanta - cellAt(this.#bornAt, agent),
+      sinceFood: this.#quanta - cellAt(this.#fedAt, agent),
       scout: this.#scout[agent] === 1,
       tint: this.#agentTinted[agent] ? this.#tintOf(agent) : undefined,
     });
@@ -442,6 +451,9 @@ export class TrailField {
   // What a step into `to`, a cell of the plane, leaves: traffic and a deposit, and the agent's color
   #lay(agent: number, from: Point, to: Point): void {
     const cell = Math.floor(to.y) * GRID + Math.floor(to.x);
+    if (cellAt(this.#food, cell) >= foodShape(this.#rules).hearthHeight / 3) {
+      this.#fedAt[agent] = this.#quanta; // in a hearth: within its reach of a food's centre
+    }
     if (this.#scout[agent] && this.#othersFood(agent, cell, to) < SCOUT_SCENT) {
       return; // a scout searching: nothing laid
     }
@@ -459,6 +471,13 @@ export class TrailField {
     green[cell] = cellAt(green, cell) + laid * cellAt(this.#agentTint, agent * 3 + 1);
     blue[cell] = cellAt(blue, cell) + laid * cellAt(this.#agentTint, agent * 3 + 2);
     weight[cell] = cellAt(weight, cell) + laid;
+  }
+  // An agent `starveAfter` quanta without food: let go.
+  // Laying a fainter trail instead doesn't stop a stream into nowhere: steering compares the sides, not how strong they are,
+  // so a faint stream on empty floor steers as well as a strong one
+  #starved(agent: number): boolean {
+    const starveAfter = this.#rules.starveAfter ?? Infinity;
+    return this.#quanta - cellAt(this.#fedAt, agent) >= starveAfter;
   }
   #tintNearHome(agent: number): number {
     const reach = this.#rules.tintReach;
