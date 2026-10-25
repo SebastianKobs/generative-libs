@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { TRAFFIC_GRID, TrailField, TrailTiles } from '../index.ts';
+import { recordTraffic } from '../traffic.ts';
 import { seededRandomness } from '../../randomness/test/seeded-randomness.js';
 
 const SEEDS = [1, 2, 3, 4, 5, 6];
@@ -948,4 +949,47 @@ test('the same traffic across seams in one go or in small steps, with agents sme
   assert.equal(oneGo.length, small.length);
   assert.ok(oneGo.length > 1, 'agents crossed into both tiles');
   assert.ok(oneGo.every((traffic, at) => sameTraffic(traffic, small[at])));
+});
+
+// ---------- the traffic at the plane's edges ----------
+
+// a line's traffic in one column, or one row, of the traffic grid
+function columnOf(traffic, column) {
+  let sum = 0;
+  for (let row = 0; row < TRAFFIC_GRID; row++) {
+    sum += traffic[row * TRAFFIC_GRID + column];
+  }
+  return sum;
+}
+function rowOf(traffic, row) {
+  return total(traffic.subarray(row * TRAFFIC_GRID, (row + 1) * TRAFFIC_GRID));
+}
+
+test('a line across the plane leaves as much traffic in the edge cells as in the middle: no dark line at a seam', () => {
+  const grid = TrailField.grid;
+  const across = new Float32Array(TRAFFIC_GRID * TRAFFIC_GRID);
+  recordTraffic(across, grid, { x: 0, y: grid / 2 + 0.3 }, { x: grid, y: grid / 2 + 0.3 });
+  const middle = columnOf(across, TRAFFIC_GRID / 2);
+  for (const edge of [0, TRAFFIC_GRID - 1]) {
+    assert.ok(
+      Math.abs(columnOf(across, edge) - middle) < 0.05 * middle,
+      `column ${edge}: ${columnOf(across, edge)} against ${middle}`,
+    );
+  }
+  const down = new Float32Array(TRAFFIC_GRID * TRAFFIC_GRID);
+  recordTraffic(down, grid, { x: grid / 2 + 0.3, y: 0 }, { x: grid / 2 + 0.3, y: grid });
+  for (const edge of [0, TRAFFIC_GRID - 1]) {
+    assert.ok(
+      Math.abs(rowOf(down, edge) - middle) < 0.05 * middle,
+      `row ${edge}: ${rowOf(down, edge)} against ${middle}`,
+    );
+  }
+});
+
+test("a step's part past the plane leaves nothing in this field's traffic: the field beyond lays it", () => {
+  const grid = TrailField.grid;
+  const traffic = new Float32Array(TRAFFIC_GRID * TRAFFIC_GRID);
+  recordTraffic(traffic, grid, { x: grid + 0.2, y: 40 }, { x: grid + 3, y: 41 });
+  recordTraffic(traffic, grid, { x: 40, y: -3 }, { x: 41, y: -0.2 });
+  assert.equal(total(traffic), 0);
 });

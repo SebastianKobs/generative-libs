@@ -37,20 +37,32 @@ export function fadeTraffic(traffic: Float32Array, factor: number): number {
   return strongest;
 }
 
-// A weight shared among the four cells round (x, y); none at the grid's last row and column
+// A weight shared among the four cells round (x, y), a cell's centre at its index.
+//   1. A point past the plane is dropped: a step crossing a seam is laid by both fields, each its own part.
+//   2. A point's share falling past the plane goes to the edge cell beside it, so an edge cell gets as much as one inside:
+//      dropped, the edge cells got half, and the tiles' seams showed as dark lines across the threads.
 function splat(traffic: Float32Array, x: number, y: number, weight: number): void {
-  const column = Math.floor(x);
-  const row = Math.floor(y);
-  if (column < 0 || row < 0 || column >= TRAFFIC_GRID - 1 || row >= TRAFFIC_GRID - 1) {
+  if (!onPlane(x) || !onPlane(y)) {
     return;
   }
+  const column = Math.floor(x);
+  const row = Math.floor(y);
   const right = x - column;
   const down = y - row;
-  const at = row * TRAFFIC_GRID + column;
-  addTo(traffic, at, weight * (1 - right) * (1 - down) * 2);
-  addTo(traffic, at + 1, weight * right * (1 - down) * 2);
-  addTo(traffic, at + TRAFFIC_GRID, weight * (1 - right) * down * 2);
-  addTo(traffic, at + TRAFFIC_GRID + 1, weight * right * down * 2);
+  const [left, next] = [inGrid(column), inGrid(column + 1)];
+  const [top, below] = [inGrid(row) * TRAFFIC_GRID, inGrid(row + 1) * TRAFFIC_GRID];
+  addTo(traffic, top + left, weight * (1 - right) * (1 - down) * 2);
+  addTo(traffic, top + next, weight * right * (1 - down) * 2);
+  addTo(traffic, below + left, weight * (1 - right) * down * 2);
+  addTo(traffic, below + next, weight * right * down * 2);
+}
+
+// a cell spans half a cell either side of its centre
+function onPlane(at: number): boolean {
+  return at >= -0.5 && at < TRAFFIC_GRID - 0.5;
+}
+function inGrid(cell: number): number {
+  return Math.min(TRAFFIC_GRID - 1, Math.max(0, cell));
 }
 
 function addTo(traffic: Float32Array, cell: number, amount: number): void {
