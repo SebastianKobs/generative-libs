@@ -62,10 +62,13 @@ export interface Traveller {
 }
 // What lies beyond a field's plane, one tile across and down (each -1, 0 or 1):
 //   has: whether a field does; where none does, an agent turns away
-//   smellAt: what a sensor smells at a place past the plane, as the field beyond smells it there
+//   takes: whether it takes an agent handed over (`has` if not said): an asleep field has a trail to smell but takes none,
+//     so an agent turns away from it as from no field
+//   smellAt: what a sensor smells at a place past the plane, as the field beyond smells it there, 0 where none lies
 //     (the place and a scout's home both in the cells of that field's plane)
 export interface FieldBeyond {
   has(across: number, down: number): boolean;
+  takes?(across: number, down: number): boolean;
   smellAt(across: number, down: number, place: Point, home: Point | undefined): number;
 }
 // A food's shape under the rules: its hearth's and scent's heights and widths (in cells squared), and how far it's laid
@@ -169,6 +172,8 @@ export class TrailField {
   #letOut = 0; // the agents handed on to another field in the last quantum
   #tookIn = 0; // the agents taken in from another field in the last quantum
   #settled = false; // no agent live and every trace faded, cleared: nothing to run until told
+  #slept = 0; // the quanta reached asleep: an agent's age counts only the quanta the field ran
+  #asleep = false;
 
   // The agents' draws come from `randomness`, on a stream of their own.
   // `fieldBeyond` tells, for 'pass' edges, which sides have a field to hand an agent to and what it smells there
@@ -229,14 +234,17 @@ export class TrailField {
 
   // A food at (x, y): a hearth and a scent agents are drawn to (a plant is born there)
   food(x: number, y: number): void {
-    this.#told.push({ kind: 'food', x, y });
+    this.#tell({ kind: 'food', x, y });
   }
   // The food at (x, y) taken away: its hearth and scent as food() laid them, under the same rules (a plant gone)
   foodGone(x: number, y: number): void {
-    this.#told.push({ kind: 'foodGone', x, y });
+    this.#tell({ kind: 'foodGone', x, y });
   }
   // A seed at (x, y): `agents` let loose there, `perSeed` if not said (a note played there), each carrying `tint` where it's given
   seed(x: number, y: number, tint?: Tint, agents?: number): void {
+    if (this.#asleep) {
+      return;
+    }
     this.#told.push({ kind: 'seed', x, y, tint, agents });
   }
 
@@ -245,15 +253,34 @@ export class TrailField {
     this.#told.push({ kind: 'arrive', x: traveller.x, y: traveller.y, traveller });
   }
 
-  // how many quanta have been reached, the idle ones skipped included
+  // how many quanta have been reached, the idle and the asleep ones skipped included
   get quanta(): number {
     return this.#quanta;
+  }
+
+  // Whether the field is asleep: it steps no quantum and keeps its trail, traffic, colors and agents as they are, its quanta
+  // counted as reached and not as the agents' age; a food told is applied at once, a seed dropped. Waking carries on where it was.
+  get asleep(): boolean {
+    return this.#asleep;
+  }
+  set asleep(asleep: boolean) {
+    if (asleep && !this.#asleep) {
+      this.#applyFoodsToldAndDropSeeds();
+    }
+    this.#asleep = asleep;
   }
 
   // Runs every quantum that ends by `beat`; a beat already reached does nothing
   advanceTo(beat: number): void {
     const target = Math.floor(beat / QUANTUM_BEATS);
     while (this.#quanta < target) {
+      if (this.#asleep) {
+        this.#slept += target - this.#quanta;
+        this.#quanta = target;
+        this.#letOut = 0;
+        this.#tookIn = 0;
+        return;
+      }
       if (this.#isIdle()) {
         this.#quanta = target; // nothing to move, fade or draw: a late field costs nothing
         this.#letOut = 0;
@@ -271,6 +298,27 @@ export class TrailField {
   }
   #isIdle(): boolean {
     return this.#told.length === 0 && (this.#agents === 0 || this.#settled);
+  }
+
+  // A food or its going applied at once while asleep, as food is state; any other is kept for the quantum
+  #tell(told: Told): void {
+    if (this.#asleep) {
+      this.#apply(told);
+      return;
+    }
+    this.#told.push(told);
+  }
+  // Falling asleep: what was told and not run yet. A food is applied, a seed dropped, an arriving agent kept for waking.
+  #applyFoodsToldAndDropSeeds(): void {
+    const kept: Told[] = [];
+    for (const told of this.#told.splice(0)) {
+      if (told.kind === 'arrive') {
+        kept.push(told);
+      } else if (told.kind !== 'seed') {
+        this.#apply(told);
+      }
+    }
+    this.#told.push(...kept);
   }
 
   #runQuantum(): void {
@@ -348,6 +396,11 @@ export class TrailField {
     return slot;
   }
 
+  // The quanta the field ran, not the asleep ones: what an agent's age and its time since food count
+  #quantaRun(): number {
+    return this.#quanta - this.#slept;
+  }
+
   // Carries on as it was, nothing drawn; the step that brought it across is laid here as it was in the field it left
   #takeIn(traveller: Traveller): void {
     this.#tookIn++;
@@ -356,8 +409,8 @@ export class TrailField {
     this.#agentX[slot] = at.x;
     this.#agentY[slot] = at.y;
     this.#heading[slot] = traveller.heading;
-    this.#bornAt[slot] = this.#quanta - traveller.age;
-    this.#fedAt[slot] = this.#quanta - (traveller.sinceFood ?? traveller.age);
+    this.#bornAt[slot] = this.#quantaRun() - traveller.age;
+    this.#fedAt[slot] = this.#quantaRun() - (traveller.sinceFood ?? traveller.age);
     this.#homeX[slot] = traveller.homeX * GRID;
     this.#homeY[slot] = traveller.homeY * GRID;
     this.#scout[slot] = traveller.scout ? 1 : 0;
@@ -372,8 +425,8 @@ export class TrailField {
     this.#agentX[slot] = x * GRID + (this.#draws.next() - 0.5) * SEED_SCATTER;
     this.#agentY[slot] = y * GRID + (this.#draws.next() - 0.5) * SEED_SCATTER;
     this.#heading[slot] = this.#draws.next() * Math.PI * 2;
-    this.#bornAt[slot] = this.#quanta;
-    this.#fedAt[slot] = this.#quanta;
+    this.#bornAt[slot] = this.#quantaRun();
+    this.#fedAt[slot] = this.#quantaRun();
     this.#homeX[slot] = x * GRID;
     this.#homeY[slot] = y * GRID;
     // drawn only where the rules have scouts, so a field without them draws as before
@@ -391,7 +444,7 @@ export class TrailField {
       if (this.#gone[agent]) {
         continue;
       }
-      const age = this.#quanta - cellAt(this.#bornAt, agent);
+      const age = this.#quantaRun() - cellAt(this.#bornAt, agent);
       if (age >= (this.#scout[agent] ? scoutLifetime : lifetime) || this.#starved(agent)) {
         continue; // let go: its slot taken by the next one let loose, the oldest first
       }
@@ -500,11 +553,17 @@ export class TrailField {
       this.#lay(agent, from, to);
       return;
     }
-    if (!this.#fieldBeyond.has(across, down)) {
+    if (!this.#takes(across, down)) {
       this.#heading[agent] = this.#draws.next() * Math.PI * 2;
       return;
     }
     this.#leave(agent, from, to);
+  }
+
+  // Whether the field beyond takes an agent handed over
+  #takes(across: number, down: number): boolean {
+    const beyond = this.#fieldBeyond;
+    return beyond.takes ? beyond.takes(across, down) : beyond.has(across, down);
   }
 
   // The agent let go and kept in `leavers`; its step is laid as far as the plane goes, by a scout not at all (it smells nothing past it)
@@ -520,8 +579,8 @@ export class TrailField {
       heading: cellAt(this.#heading, agent),
       homeX: cellAt(this.#homeX, agent) / GRID,
       homeY: cellAt(this.#homeY, agent) / GRID,
-      age: this.#quanta - cellAt(this.#bornAt, agent),
-      sinceFood: this.#quanta - cellAt(this.#fedAt, agent),
+      age: this.#quantaRun() - cellAt(this.#bornAt, agent),
+      sinceFood: this.#quantaRun() - cellAt(this.#fedAt, agent),
       scout: this.#scout[agent] === 1,
       tint: this.#agentTinted[agent] ? this.#tintOf(agent) : undefined,
     });
@@ -539,7 +598,7 @@ export class TrailField {
   #lay(agent: number, from: Point, to: Point): void {
     const cell = Math.floor(to.y) * GRID + Math.floor(to.x);
     if (cellAt(this.#food, cell) >= foodShape(this.#rules).hearthHeight / 3) {
-      this.#fedAt[agent] = this.#quanta; // in a hearth: within its reach of a food's centre
+      this.#fedAt[agent] = this.#quantaRun(); // in a hearth: within its reach of a food's centre
     }
     if (this.#scout[agent] && this.#othersFood(this.#homeOf(agent), cell, to) < SCOUT_SCENT) {
       return; // a scout searching: nothing laid
@@ -564,7 +623,7 @@ export class TrailField {
   // so a faint stream on empty floor steers as well as a strong one
   #starved(agent: number): boolean {
     const starveAfter = this.#rules.starveAfter ?? Infinity;
-    return this.#quanta - cellAt(this.#fedAt, agent) >= starveAfter;
+    return this.#quantaRun() - cellAt(this.#fedAt, agent) >= starveAfter;
   }
   #tintNearHome(agent: number): number {
     const reach = this.#rules.tintReach;

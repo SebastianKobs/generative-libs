@@ -14,6 +14,9 @@ export interface TileField {
   readonly field: TrailField;
 }
 
+// Whether a tile is awake: it steps its field; the others sleep
+type AwakeTiles = (tile: Tile) => boolean;
+
 // A world of tiles, each a field, so threads can grow across the seams between them.
 // Places are in tile units: (1.25, 0.5) is a quarter into tile 1, halfway down tile 0.
 // A field is made where a food reaches it or a seed falls in it, and nowhere else, so an empty
@@ -22,6 +25,9 @@ export interface TileField {
 // Every field is stepped one quantum at a time, tile by tile, row by row, and then the
 // agents that left are handed on in that order: the same events told at the same beats give
 // the same traffic in every tile, in one go or in small steps.
+// A field far from where it's looked at can sleep: `advanceTo()` is told which tiles are awake. An asleep field steps nothing and
+// keeps its trail, traffic and agents as they are, its quanta reached and not counted in its agents' age; no agent is handed to it,
+// the agent turns away, but a sensor beside it still smells what lies there.
 // `wrapAcross` is the tiles a side of a world that wraps round: the tile after the last is the first.
 export class TrailTiles {
   readonly #randomness: Randomness;
@@ -31,6 +37,7 @@ export class TrailTiles {
   readonly #quantumMs = new Map<TrailField, number>(); // each field's time for its last quantum
   #rules: TrailRules;
   #quanta = 0;
+  #awake: AwakeTiles | undefined; // the last call's: a field made after it is as it says
 
   constructor(rules: TrailRules, randomness: Randomness, wrapAcross?: number) {
     this.#rules = rules;
@@ -75,8 +82,13 @@ export class TrailTiles {
     this.#fieldIn(tile).seed(x - tile.across, y - tile.down, tint, agents);
   }
 
-  // Runs every quantum that ends by `beat` in every tile; a beat already reached does nothing
-  advanceTo(beat: number): void {
+  // Runs every quantum that ends by `beat` in every awake tile (every tile if `awake` isn't said); a beat already reached does
+  // nothing. The tiles it doesn't name sleep from now until a call names them.
+  advanceTo(beat: number, awake?: AwakeTiles): void {
+    this.#awake = awake;
+    for (const { tile, field } of this.#made) {
+      field.asleep = !(awake?.(tile) ?? true);
+    }
     const target = Math.floor(beat / QUANTUM_BEATS);
     while (this.#quanta < target) {
       this.#quanta++;
@@ -124,9 +136,11 @@ export class TrailTiles {
     }
     const field = new TrailField(this.#rules, this.#randomness.fork(`tile ${placed.across},${placed.down}`), {
       has: (across, down) => this.#fieldBeside(placed, across, down) !== undefined,
+      takes: (across, down) => this.#fieldBeside(placed, across, down)?.asleep === false,
       smellAt: (across, down, place, home) => this.#fieldBeside(placed, across, down)?.smellAt(place, home) ?? 0,
     });
     field.advanceTo(this.#quanta * QUANTUM_BEATS);
+    field.asleep = !(this.#awake?.(placed) ?? true);
     const made = { tile: placed, field };
     this.#made.push(made);
     this.#inOrder.push(made);

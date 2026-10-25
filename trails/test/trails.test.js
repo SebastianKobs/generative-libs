@@ -1176,3 +1176,143 @@ test('the passes not said are one a step, as before: the same colors as four pas
 test('the colors diffused once a quantum differ from those diffused at every step: the passes are taken', () => {
   assert.ok(!sameTraffic(colorsOf(1), colorsOf(4)));
 });
+
+// ---------- a field asleep: far from where it's looked at, it waits as it is (LOOK23h) ----------
+
+const SLEEPING = { ...PASSING, lifetime: 20, starveAfter: 20 };
+const NOBODY = () => false;
+// only the tile at (across, down) awake
+const onlyAt = (across, down) => (tile) => tile.across === across && tile.down === down;
+const copyOf = (values) => Float32Array.from(values);
+
+test('a field asleep stays as it is over many beats: its traffic and colors unchanged, its quanta counted as reached', () => {
+  const tiles = tilesOf(1, SLEEPING);
+  tiles.advanceTo(0);
+  tiles.seed(0.5, 0.5, RED, 12);
+  tiles.advanceTo(3);
+  const field = fieldAt(tiles, 0, 0);
+  const traffic = copyOf(field.traffic);
+  const colors = copyOf(field.tints.weight);
+  assert.ok(total(traffic) > 0);
+  assert.equal(field.asleep, false);
+  tiles.advanceTo(200, NOBODY);
+  assert.equal(field.asleep, true);
+  assert.ok(sameTraffic(field.traffic, traffic), 'traffic unchanged');
+  assert.ok(sameTraffic(field.tints.weight, colors), 'colors unchanged');
+  assert.equal(field.quanta, 400);
+  assert.equal(tiles.msOf(field) < 5, true);
+});
+
+test('its agents do not age while it sleeps: past their lifetime and starving time asleep, they run on once it wakes', () => {
+  const asleep = tilesOf(1, SLEEPING);
+  const awake = tilesOf(1, SLEEPING);
+  for (const tiles of [asleep, awake]) {
+    tiles.advanceTo(0);
+    tiles.seed(0.5, 0.5, RED, 12);
+    tiles.advanceTo(2);
+  }
+  asleep.advanceTo(100, NOBODY);
+  awake.advanceTo(100);
+  asleep.advanceTo(100.5);
+  assert.equal(fieldAt(asleep, 0, 0).liveAgents, 12, 'all still alive once woken');
+  assert.equal(fieldAt(awake, 0, 0).liveAgents, 0, 'awake, they ran out their lifetime');
+});
+
+test('a field woken carries on as one that never slept, given no events between', () => {
+  const slept = tilesOf(1, SLEEPING);
+  const never = tilesOf(1, SLEEPING);
+  for (const tiles of [slept, never]) {
+    tiles.advanceTo(0);
+    tiles.seed(0.5, 0.5, RED, 12);
+    tiles.advanceTo(3);
+  }
+  slept.advanceTo(20, NOBODY);
+  slept.advanceTo(23);
+  never.advanceTo(6); // the 6 quanta it ran after waking
+  const [woken, kept] = [fieldAt(slept, 0, 0), fieldAt(never, 0, 0)];
+  assert.ok(total(woken.traffic) > 0);
+  assert.ok(sameTraffic(woken.traffic, kept.traffic), 'the same traffic');
+  assert.ok(sameTraffic(woken.tints.weight, kept.tints.weight), 'the same colors');
+  assert.equal(woken.liveAgents, kept.liveAgents);
+});
+
+test('while asleep a food laid or taken away is applied at once; a seed is dropped, so waking brings no burst', () => {
+  const tiles = tilesOf(1, SLEEPING);
+  tiles.advanceTo(0);
+  tiles.food(0.5, 0.5);
+  tiles.advanceTo(1, NOBODY);
+  const field = fieldAt(tiles, 0, 0);
+  assert.equal(field.asleep, true);
+  const centre = { x: 80, y: 80 };
+  const before = field.smellAt(centre);
+  tiles.food(0.5, 0.5);
+  assert.ok(field.smellAt(centre) > before, 'a food laid is smelled at once');
+  tiles.foodGone(0.5, 0.5);
+  tiles.foodGone(0.5, 0.5);
+  assert.ok(field.smellAt(centre) < 1e-6, 'a food taken away is gone at once');
+  tiles.seed(0.5, 0.5, RED, 12);
+  tiles.advanceTo(4);
+  assert.equal(field.asleep, false);
+  assert.equal(field.agentsLoose, 0, 'the seed was dropped');
+  assert.equal(total(field.traffic), 0);
+});
+
+test('a seed told just before a field falls asleep is dropped too, a food told then applied', () => {
+  const tiles = tilesOf(1, SLEEPING);
+  tiles.advanceTo(0);
+  tiles.food(0.5, 0.5);
+  tiles.seed(0.5, 0.5, RED, 12);
+  tiles.advanceTo(2, NOBODY);
+  const field = fieldAt(tiles, 0, 0);
+  assert.ok(field.smellAt({ x: 80, y: 80 }) > 0, 'the food is laid');
+  tiles.advanceTo(4);
+  assert.equal(field.agentsLoose, 0, 'the seed was dropped');
+});
+
+test('a seam into an asleep field is as one into no field: an agent turns away and the asleep field is left as it is', () => {
+  const tiles = tilesOf(1, SLEEPING);
+  tiles.advanceTo(0);
+  tiles.food(1.5, 0.5); // makes the field beside
+  tiles.seed(0.99, 0.5, RED, 12);
+  tiles.advanceTo(1, onlyAt(0, 0));
+  const [awake, asleep] = [fieldAt(tiles, 0, 0), fieldAt(tiles, 1, 0)];
+  assert.equal(asleep.asleep, true);
+  assert.equal(awake.asleep, false);
+  tiles.advanceTo(10, onlyAt(0, 0));
+  assert.ok(total(awake.traffic) > 0, 'the awake field ran');
+  assert.equal(awake.leavers.length, 0);
+  assert.equal(awake.letOut, 0);
+  assert.equal(total(asleep.traffic), 0, 'nobody crossed');
+  assert.equal(asleep.tookIn, 0);
+});
+
+test('a sensor past the plane still smells a field that does not take agents, and the agent turns away', () => {
+  let asked = 0;
+  const beyond = {
+    has: () => true,
+    takes: () => false,
+    smellAt: () => {
+      asked++;
+      return 0;
+    },
+  };
+  const field = new TrailField(PASSING, seededRandomness(1), beyond);
+  field.seed(0.999, 0.5, undefined, 6);
+  field.advanceTo(3);
+  assert.ok(asked > 0, 'asked what it smells');
+  assert.equal(field.leavers.length, 0);
+});
+
+test('the awake test is read at each call: a field woken runs again, and without a test every field runs, as before', () => {
+  const tiles = tilesOf(1, SLEEPING);
+  tiles.advanceTo(0);
+  tiles.food(0.5, 0.5);
+  tiles.advanceTo(1, NOBODY);
+  const field = fieldAt(tiles, 0, 0);
+  assert.equal(field.asleep, true);
+  tiles.advanceTo(2);
+  assert.equal(field.asleep, false);
+  tiles.seed(0.5, 0.5, RED, 12);
+  tiles.advanceTo(4, onlyAt(0, 0));
+  assert.ok(total(field.traffic) > 0, 'it ran');
+});
