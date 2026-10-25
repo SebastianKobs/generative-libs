@@ -27,11 +27,14 @@ export function recordTraffic(
   }
 }
 
-// Every cell's traffic fades by `factor`
-export function fadeTraffic(traffic: Float32Array, factor: number): void {
+// Every cell's traffic fades by `factor`; the strongest cell it leaves
+export function fadeTraffic(traffic: Float32Array, factor: number): number {
+  let strongest = 0;
   for (let cell = 0; cell < traffic.length; cell++) {
     traffic[cell] = (traffic[cell] ?? 0) * factor;
+    strongest = Math.max(strongest, traffic[cell] ?? 0);
   }
+  return strongest;
 }
 
 // A weight shared among the four cells round (x, y); none at the grid's last row and column

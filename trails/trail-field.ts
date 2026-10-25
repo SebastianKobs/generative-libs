@@ -105,6 +105,7 @@ const KEEP_OWN = 0.94; // diffusing, a cell keeps this much of itself ...
 const GIVEN_BY_NEIGHBOUR = 0.015; // ... and takes this much of each of its four neighbours
 const EDGE_MARGIN = 1; // cells from the edge an agent turns away
 const SCOUT_SCENT = 0.01; // what a scout must smell of another food where it steps to lay its trail there
+const FADED = 1e-4; // a trace this weak is gone: a traffic pass is 0.22, and a byte of it rounds to 0
 
 // A slime mould (Physarum, after Jeff Jones's 2010 model): agents sense the trail ahead, left and
 // right, turn towards the strongest, step and deposit; the trail diffuses a little and fades slowly.
@@ -144,6 +145,8 @@ export class TrailField {
   #agents = 0;
   #oldest = 0; // the next agent to be let go once MAX_AGENTS are loose
   #quanta = 0;
+  #liveAgents = 0; // the agents the last step moved: not let go, not handed on
+  #settled = false; // no agent live and every trace faded, cleared: nothing to run until told
 
   // The agents' draws come from `randomness`, on a stream of their own.
   // `fieldBeyond` tells, for 'pass' edges, which sides have a field to hand an agent to (every side if not said)
@@ -220,24 +223,43 @@ export class TrailField {
     }
   }
 
-  // No agent was ever let loose and nothing is told: the trail and the traffic are empty and stay so
+  // Nothing to run: no agent was ever let loose, or every one is let go or handed on and the traces have faded
+  // away, and nothing is told. The trail, the traffic and the colors are empty and stay so.
+  get idle(): boolean {
+    return this.#isIdle();
+  }
   #isIdle(): boolean {
-    return this.#agents === 0 && this.#told.length === 0;
+    return this.#told.length === 0 && (this.#agents === 0 || this.#settled);
   }
 
   #runQuantum(): void {
     for (const told of this.#told.splice(0)) {
       this.#apply(told);
     }
+    let strongest = 0;
     for (let step = 0; step < STEPS_PER_QUANTUM; step++) {
-      this.#moveAgents();
-      diffuseAndFade(this.#trail, this.#scratch, this.#rules.fade);
-      for (const channel of Object.values(this.#tints)) {
-        diffuseAndFade(channel, this.#scratch, this.#rules.fade);
+      this.#liveAgents = this.#moveAgents();
+      strongest = diffuseAndFade(this.#trail, this.#scratch, this.#rules.fade);
+      for (const [name, channel] of Object.entries(this.#tints)) {
+        const strongestOfChannel = diffuseAndFade(channel, this.#scratch, this.#rules.fade);
+        strongest = name === 'weight' ? Math.max(strongest, strongestOfChannel) : strongest;
       }
     }
-    fadeTraffic(this.#traffic, this.#rules.fade ** STEPS_PER_QUANTUM);
+    strongest = Math.max(strongest, fadeTraffic(this.#traffic, this.#rules.fade ** STEPS_PER_QUANTUM));
     this.#quanta++;
+    this.#settled = this.#liveAgents === 0 && strongest < FADED;
+    if (this.#settled) {
+      this.#clearTraces();
+    }
+  }
+
+  // The trail, traffic and colors to nothing; the food stays, for a seed or an arriving agent to find
+  #clearTraces(): void {
+    this.#trail.fill(0);
+    this.#traffic.fill(0);
+    for (const channel of Object.values(this.#tints)) {
+      channel.fill(0);
+    }
   }
 
   #apply({ kind, x, y, tint, agents, traveller }: Told): void {
@@ -292,7 +314,9 @@ export class TrailField {
     this.#agentTint.set(tint ?? [0, 0, 0], slot * 3);
   }
 
-  #moveAgents(): void {
+  // Moves each live agent a step; how many that was
+  #moveAgents(): number {
+    let live = 0;
     const lifetime = this.#rules.lifetime ?? Infinity;
     const scoutLifetime = this.#rules.scoutLifetime ?? lifetime;
     for (let agent = 0; agent < this.#agents; agent++) {
@@ -303,9 +327,11 @@ export class TrailField {
       if (age >= (this.#scout[agent] ? scoutLifetime : lifetime)) {
         continue; // let go: its slot taken by the next one let loose, the oldest first
       }
+      live++;
       this.#steer(agent);
       this.#step(agent);
     }
+    return live;
   }
 
   // Turns towards the side that smells stronger; between two equal sides, by a coin
@@ -498,21 +524,23 @@ function foodAt(shape: FoodShape, distanceSquared: number): number {
   const hearth = shape.hearthHeight * Math.exp(-distanceSquared / shape.hearthWidth);
   return hearth + shape.scentHeight * Math.exp(-distanceSquared / shape.scentWidth);
 }
-// Each cell inside the edge: mostly itself, a little of its four neighbours, then the slow fade
-function diffuseAndFade(trail: Float32Array, scratch: Float32Array, fade: number): void {
-  for (let row = 1; row < GRID - 1; row++) {
-    for (let column = 1; column < GRID - 1; column++) {
+// Each cell: mostly itself, a little of the neighbours it has (four inside, fewer at the edge), then the slow fade; the strongest cell it leaves
+function diffuseAndFade(trail: Float32Array, scratch: Float32Array, fade: number): number {
+  let strongest = 0;
+  for (let row = 0; row < GRID; row++) {
+    for (let column = 0; column < GRID; column++) {
       const cell = row * GRID + column;
       const around =
-        cellAt(trail, cell - 1) + cellAt(trail, cell + 1) + cellAt(trail, cell - GRID) + cellAt(trail, cell + GRID);
+        (column > 0 ? cellAt(trail, cell - 1) : 0)
+        + (column < GRID - 1 ? cellAt(trail, cell + 1) : 0)
+        + (row > 0 ? cellAt(trail, cell - GRID) : 0)
+        + (row < GRID - 1 ? cellAt(trail, cell + GRID) : 0);
       scratch[cell] = (cellAt(trail, cell) * KEEP_OWN + around * GIVEN_BY_NEIGHBOUR) * fade;
+      strongest = Math.max(strongest, cellAt(scratch, cell));
     }
   }
-  for (let row = 1; row < GRID - 1; row++) {
-    for (let column = 1; column < GRID - 1; column++) {
-      trail[row * GRID + column] = cellAt(scratch, row * GRID + column);
-    }
-  }
+  trail.set(scratch);
+  return strongest;
 }
 
 // Which side of the plane a place in cells is past: -1 before it, 1 beyond it, 0 within it

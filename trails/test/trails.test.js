@@ -680,3 +680,101 @@ test('the agents loose: none for food alone, perSeed for a seed once a quantum h
   field.advanceTo(40);
   assert.equal(field.agentsLoose, RULES.perSeed, 'past their lifetime, they were still let loose here');
 });
+
+// ---------- a field idle again once its agents are let go and its traces have faded (LOOK23d) ----------
+
+const LET_GO = { ...SENSE, lifetime: 4 };
+const FADED_AFTER = 100; // beats: 200 quanta, far past the lifetime and the fade of a thread
+const QUANTA_A_BEAT = 2;
+const isClear = (field) => total(field.traffic) === 0 && field.tints.weight.every((weight) => weight === 0);
+
+test('a field whose agents are all let go and whose traces have faded is idle: its traffic and colors cleared, its quanta skipped', () => {
+  const field = fieldOf(1, LET_GO);
+  field.seed(0.5, 0.5, [1, 0.5, 0.2]);
+  assert.equal(field.idle, false, 'a seed is told');
+  field.advanceTo(3);
+  assert.equal(field.idle, false, 'agents running');
+  field.advanceTo(FADED_AFTER);
+  assert.equal(field.idle, true);
+  assert.ok(isClear(field), 'traffic and colors all 0');
+  assert.equal(field.quanta, FADED_AFTER * QUANTA_A_BEAT);
+  const before = performance.now();
+  field.advanceTo(5000);
+  assert.ok(performance.now() - before < 500, 'a quantum of an idle field costs nothing');
+  assert.equal(field.quanta, 10000);
+});
+
+test('without a lifetime an agent is never let go: the field is never idle', () => {
+  const field = fieldOf(1, SENSE);
+  field.seed(0.5, 0.5);
+  field.advanceTo(FADED_AFTER);
+  assert.equal(field.idle, false);
+  assert.ok(total(field.traffic) > 0);
+});
+
+test('an idle field is woken by a seed, a food or an arriving agent, and runs again', () => {
+  const field = fieldOf(1, LET_GO);
+  field.seed(0.5, 0.5);
+  field.advanceTo(FADED_AFTER);
+  assert.equal(field.idle, true);
+  field.seed(0.5, 0.5);
+  assert.equal(field.idle, false);
+  field.advanceTo(FADED_AFTER + 1);
+  assert.ok(total(field.traffic) > 0, 'its new agents ran');
+  field.advanceTo(2 * FADED_AFTER);
+  assert.equal(field.idle, true);
+  field.food(0.3, 0.3);
+  assert.equal(field.idle, false, 'a food told');
+});
+
+test('the food laid stays through an idle stretch: a seed after it still finds its hearth', () => {
+  const rules = { ...LET_GO, hearth: 3, hearthReach: 10 };
+  const mass = (idleFirst) => {
+    let near = 0;
+    for (const seed of SEEDS) {
+      const field = fieldOf(seed, rules);
+      field.food(AT_A.x, AT_A.y);
+      field.seed(0.9, 0.9, undefined, 1); // lets an agent loose, then the field goes idle
+      field.advanceTo(idleFirst ? FADED_AFTER : 1);
+      field.seed(AT_A.x, AT_A.y);
+      field.advanceTo((idleFirst ? FADED_AFTER : 1) + 3);
+      near += massIn(field.traffic, around(AT_A, 0.15));
+    }
+    return near;
+  };
+  assert.ok(mass(true) > 0.5 * mass(false), `after idle ${mass(true)}, without ${mass(false)}`);
+});
+
+test('the same events at the same beats give the same traffic whether the field went idle between them or not, in one go or in small steps', () => {
+  const told = [
+    [0, 'seed', 0.3, 0.5],
+    [FADED_AFTER, 'seed', 0.6, 0.5],
+    [FADED_AFTER + 2, 'seed', 0.5, 0.4],
+  ];
+  const oneGo = runThrough(fieldOf(1, LET_GO), told, inOneGo);
+  const small = runThrough(fieldOf(1, LET_GO), told, inSmallSteps);
+  oneGo.advanceTo(FADED_AFTER + 6);
+  small.advanceTo(FADED_AFTER + 6);
+  assert.ok(total(oneGo.traffic) > 0);
+  assert.ok(sameTraffic(oneGo.traffic, small.traffic));
+  assert.equal(oneGo.quanta, small.quanta);
+});
+
+test("a cell on the plane's border fades as every other cell does, the trail's and the color's", () => {
+  const field = fieldOf(1, { ...LET_GO, edges: 'pass' });
+  const seen = [];
+  // an agent let loose on the edge itself lays on a border cell before it turns away
+  field.seed(0.001, 0.5, [1, 0.5, 0.2], 3);
+  field.advanceTo(1);
+  const weight = field.tints.weight;
+  const borderWeight = () =>
+    weight
+      .filter((_, cell) => cell % 160 === 0 || cell % 160 === 159 || cell < 160 || cell >= 159 * 160)
+      .reduce((sum, value) => sum + value, 0);
+  seen.push(borderWeight());
+  field.advanceTo(FADED_AFTER);
+  seen.push(borderWeight());
+  assert.ok(seen[0] > 0, 'something was laid on the border');
+  assert.equal(seen[1], 0, `the border's color faded: ${seen.join(', ')}`);
+  assert.equal(field.idle, true);
+});
