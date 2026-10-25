@@ -570,26 +570,27 @@ test('the food laid beyond the seam draws agents there: a hearth across the seam
   assert.ok(withFood > 1.5 * without, `food ${withFood}, none ${without}`);
 });
 
-test('a food taken away is taken from every tile it was laid in', () => {
+test('a food taken away is taken from every tile it was laid in: it smells of nothing there', () => {
   const rules = { ...PASSING, hearth: 8, hearthReach: 16, scent: 0 };
-  const nearSeam = (told) => {
-    let mass = 0;
-    for (const seed of SEEDS) {
-      const tiles = tilesOf(seed, rules);
-      tiles.advanceTo(0);
-      told(tiles);
-      tiles.seed(1.04, 0.5, undefined, 6);
-      tiles.advanceTo(20);
-      mass += massIn(fieldAt(tiles, 1, 0).traffic, { x0: 0, x1: 0.06, y0: 0.4, y1: 0.6 });
-    }
-    return mass;
-  };
-  const kept = nearSeam((tiles) => tiles.food(0.98, 0.5));
-  const gone = nearSeam((tiles) => {
-    tiles.food(0.98, 0.5);
-    tiles.foodGone(0.98, 0.5);
-  });
-  assert.ok(gone < 0.5 * kept, `gone ${gone}, kept ${kept}`);
+  const tiles = tilesOf(1, rules);
+  tiles.advanceTo(0);
+  tiles.seed(0.5, 0.5, undefined, 0); // tile 0 and tile 1 made, nobody let loose
+  tiles.seed(1.5, 0.5, undefined, 0);
+  tiles.food(0.98, 0.5);
+  tiles.advanceTo(0.5);
+  const inTile0 = { x: 0.98 * 160, y: 80 };
+  const inTile1 = { x: 2, y: 80 }; // the food is 5 cells past tile 1's left edge
+  const smells = () => [fieldAt(tiles, 0, 0).smellAt(inTile0), fieldAt(tiles, 1, 0).smellAt(inTile1)];
+  assert.ok(
+    smells().every((smell) => smell > 0),
+    `laid in both: ${smells().join(', ')}`,
+  );
+  tiles.foodGone(0.98, 0.5);
+  tiles.advanceTo(1);
+  assert.ok(
+    smells().every((smell) => smell < 1e-6),
+    `gone from both: ${smells().join(', ')}`,
+  );
 });
 
 test('a seed lets agents loose in its own tile only, whatever it reaches', () => {
@@ -829,4 +830,122 @@ test('the quanta since its last food go with an agent across a seam: one arrivin
     return total(field.traffic);
   };
   assert.ok(afterArriving(10) < 0.2 * afterArriving(0), 'arriving starved, it walks no further');
+});
+
+// ---------- smelling across a seam: a sensor past the plane reads the field beyond ----------
+
+// two tiles side by side, agents let loose either side of the seam, 0.05 of a tile from it: the traffic in the
+// strips at the seam, against strips the same distance from the seeds on the other side of them
+function gatheringAtSeam() {
+  const strip = (x0, x1) => ({ x0, x1, y0: 0.3, y1: 0.7 });
+  let seam = 0;
+  let inside = 0;
+  for (const seed of SEEDS) {
+    const tiles = tilesOf(seed);
+    tiles.advanceTo(0);
+    tiles.seed(0.95, 0.5, undefined, 20);
+    tiles.seed(1.05, 0.5, undefined, 20);
+    tiles.advanceTo(6);
+    const left = fieldAt(tiles, 0, 0).traffic;
+    const right = fieldAt(tiles, 1, 0).traffic;
+    seam += massIn(left, strip(0.95, 1)) + massIn(right, strip(0, 0.05));
+    inside += massIn(left, strip(0.85, 0.9)) + massIn(right, strip(0.1, 0.15));
+  }
+  return { seam, inside };
+}
+
+test('agents let loose beside a seam with no food gather no more in the border columns than in columns of the same width inside', () => {
+  const { seam, inside } = gatheringAtSeam();
+  assert.ok(inside > 0, 'agents ran');
+  assert.ok(seam <= inside, `seam ${seam}, inside ${inside}`);
+});
+
+test('a sensor past the plane smells what the field beyond smells there, in that field s cells; a scout with its home there', () => {
+  const asked = [];
+  const beyond = {
+    has: () => true,
+    smellAt: (across, down, place, home) => {
+      asked.push({ across, down, place, home });
+      return 0;
+    },
+  };
+  const arrive = (field, scout) =>
+    field.arrive({ x: 0.995, y: 0.5, heading: 0, homeX: 0.9, homeY: 0.5, age: 0, scout });
+  const walker = new TrailField(PASSING, seededRandomness(1), beyond);
+  arrive(walker, false);
+  walker.advanceTo(0.5);
+  const past = asked.find(({ across }) => across === 1);
+  assert.ok(past, 'asked what lies beyond the right side');
+  assert.equal(past.down, 0);
+  assert.ok(past.place.x >= 0 && past.place.x < 10, `in the neighbour's cells: ${past.place.x}`);
+  assert.equal(past.home, undefined, 'a walker has no home to leave out');
+  asked.length = 0;
+  const scout = new TrailField(PASSING, seededRandomness(1), beyond);
+  arrive(scout, true);
+  scout.advanceTo(0.5);
+  const scoutPast = asked.find(({ across }) => across === 1);
+  assert.ok(
+    Math.abs(scoutPast.home.x - (0.9 * 160 - 160)) < 1e-3,
+    `its home in the neighbour's cells: ${scoutPast.home.x}`,
+  );
+});
+
+test('what the field beyond smells is its trail and food; a scout leaves out its own home', () => {
+  const field = fieldOf(1, PASSING);
+  field.food(0.5, 0.5);
+  field.advanceTo(0.5);
+  const centre = { x: 80, y: 80 };
+  assert.ok(field.smellAt(centre) > 0, 'food smelled');
+  assert.ok(field.smellAt(centre, centre) < 1e-6, 'a scout at its own home smells none of it');
+  assert.equal(field.smellAt({ x: -3, y: 80 }), 0, 'nothing past its own plane');
+});
+
+test('with no field beyond a side, nothing is asked of it and an agent turns away, as before', () => {
+  let asked = 0;
+  const beyond = {
+    has: () => false,
+    smellAt: () => {
+      asked++;
+      return 1;
+    },
+  };
+  const field = new TrailField(PASSING, seededRandomness(1), beyond);
+  field.seed(0.999, 0.5, undefined, 6);
+  field.advanceTo(3);
+  assert.equal(asked, 0);
+  assert.equal(field.leavers.length, 0);
+});
+
+test('a trail laid in the field beyond is smelled across the seam: more agents cross towards it than towards none', () => {
+  const crossing = (laid) => {
+    let crossed = 0;
+    for (const seed of SEEDS) {
+      const tiles = tilesOf(seed);
+      tiles.advanceTo(0);
+      tiles.seed(1.1, 0.5, undefined, laid ? 20 : 0); // a trail in tile 1, near the seam
+      tiles.seed(0.97, 0.5, undefined, 20);
+      tiles.advanceTo(1);
+      crossed += massIn(fieldAt(tiles, 1, 0).traffic, { x0: 0, x1: 0.1, y0: 0, y1: 1 });
+    }
+    return crossed;
+  };
+  assert.ok(crossing(true) > crossing(false), `with ${crossing(true)}, without ${crossing(false)}`);
+});
+
+test('the same traffic across seams in one go or in small steps, with agents smelling over them', () => {
+  const run = (stepsOf) => {
+    const tiles = tilesOf(3);
+    tiles.advanceTo(0);
+    tiles.seed(0.9, 0.5, undefined, 12);
+    tiles.seed(1.1, 0.5, undefined, 12);
+    for (const step of [...stepsOf(0, 6), 6]) {
+      tiles.advanceTo(step);
+    }
+    return tiles.fields.map(({ field }) => field.traffic);
+  };
+  const oneGo = run(inOneGo);
+  const small = run(inSmallSteps);
+  assert.equal(oneGo.length, small.length);
+  assert.ok(oneGo.length > 1, 'agents crossed into both tiles');
+  assert.ok(oneGo.every((traffic, at) => sameTraffic(traffic, small[at])));
 });

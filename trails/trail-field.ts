@@ -55,8 +55,14 @@ export interface Traveller {
   readonly scout: boolean;
   readonly tint?: Tint | undefined;
 }
-// Whether a field lies one tile across and down (each -1, 0 or 1) beyond this one's plane: where none does, an agent turns away
-export type FieldBeyond = (across: number, down: number) => boolean;
+// What lies beyond a field's plane, one tile across and down (each -1, 0 or 1):
+//   has: whether a field does; where none does, an agent turns away
+//   smellAt: what a sensor smells at a place past the plane, as the field beyond smells it there
+//     (the place and a scout's home both in the cells of that field's plane)
+export interface FieldBeyond {
+  has(across: number, down: number): boolean;
+  smellAt(across: number, down: number, place: Point, home: Point | undefined): number;
+}
 // A food's shape under the rules: its hearth's and scent's heights and widths (in cells squared), and how far it's laid
 interface FoodShape {
   readonly hearthHeight: number;
@@ -92,6 +98,7 @@ interface Point {
   readonly y: number;
 }
 
+const NOTHING_BEYOND: FieldBeyond = { has: () => true, smellAt: () => 0 }; // a field alone: hands on, smells nothing
 const GRID = 160; // the field's cells a side
 const GRID_TUNED_ON = 112; // the distances below were tuned on this many cells a side
 const SCALE = GRID / GRID_TUNED_ON;
@@ -155,8 +162,9 @@ export class TrailField {
   #settled = false; // no agent live and every trace faded, cleared: nothing to run until told
 
   // The agents' draws come from `randomness`, on a stream of their own.
-  // `fieldBeyond` tells, for 'pass' edges, which sides have a field to hand an agent to (every side if not said)
-  constructor(rules: TrailRules, randomness: Randomness, fieldBeyond: FieldBeyond = () => true) {
+  // `fieldBeyond` tells, for 'pass' edges, which sides have a field to hand an agent to and what it smells there
+  // (every side has one, smelling nothing, if not said)
+  constructor(rules: TrailRules, randomness: Randomness, fieldBeyond: FieldBeyond = NOTHING_BEYOND) {
     this.#rules = rules;
     this.#draws = randomness.fork('agents');
     this.#fieldBeyond = fieldBeyond;
@@ -366,24 +374,50 @@ export class TrailField {
 
   #smellFrom(agent: number, direction: number): number {
     const sense = this.#rules.sense * SCALE;
-    const x = cellAt(this.#agentX, agent) + Math.cos(direction) * sense;
-    const y = cellAt(this.#agentY, agent) + Math.sin(direction) * sense;
-    const column = Math.floor(x);
-    const row = Math.floor(y);
+    const place = {
+      x: cellAt(this.#agentX, agent) + Math.cos(direction) * sense,
+      y: cellAt(this.#agentY, agent) + Math.sin(direction) * sense,
+    };
+    const home = this.#scout[agent] ? this.#homeOf(agent) : undefined;
+    const across = sideOf(place.x);
+    const down = sideOf(place.y);
+    if (across === 0 && down === 0) {
+      return this.smellAt(place, home);
+    }
+    return this.#smellBeyond(across, down, place, home);
+  }
+  // What a sensor past the plane smells: what the field beyond smells there, nothing where there is none or edges turn
+  #smellBeyond(across: number, down: number, place: Point, home: Point | undefined): number {
+    if (this.#rules.edges !== 'pass' || !this.#fieldBeyond.has(across, down)) {
+      return 0;
+    }
+    const shift = { x: across * GRID, y: down * GRID };
+    const inBeyond = (point: Point): Point => ({ x: point.x - shift.x, y: point.y - shift.y });
+    return this.#fieldBeyond.smellAt(across, down, inBeyond(place), home && inBeyond(home));
+  }
+
+  // What a sensor smells at a place in the plane, in cells: the trail and the food there. A scout, given its home, smells only the
+  // food there but its home's, as food() would have laid it there; nothing past the plane.
+  smellAt(place: Point, home?: Point): number {
+    const column = Math.floor(place.x);
+    const row = Math.floor(place.y);
     if (column < 0 || row < 0 || column >= GRID || row >= GRID) {
       return 0;
     }
     const cell = row * GRID + column;
-    if (this.#scout[agent]) {
-      return this.#othersFood(agent, cell, { x, y });
+    if (home) {
+      return this.#othersFood(home, cell, place);
     }
     return cellAt(this.#trail, cell) + cellAt(this.#food, cell) * FOOD_WEIGHT;
   }
   // What a scout smells at a place: the food there but its home's, as food() would have laid it there
-  #othersFood(agent: number, cell: number, { x, y }: { x: number; y: number }): number {
-    const distanceSquared = (x - cellAt(this.#homeX, agent)) ** 2 + (y - cellAt(this.#homeY, agent)) ** 2;
-    const home = foodAt(foodShape(this.#rules), distanceSquared);
-    return Math.max(0, cellAt(this.#food, cell) - home) * FOOD_WEIGHT;
+  #othersFood(home: Point, cell: number, { x, y }: Point): number {
+    const distanceSquared = (x - home.x) ** 2 + (y - home.y) ** 2;
+    const homeFood = foodAt(foodShape(this.#rules), distanceSquared);
+    return Math.max(0, cellAt(this.#food, cell) - homeFood) * FOOD_WEIGHT;
+  }
+  #homeOf(agent: number): Point {
+    return { x: cellAt(this.#homeX, agent), y: cellAt(this.#homeY, agent) };
   }
 
   // Steps along its heading, leaving traffic and a deposit; at the edge, turns away to a new heading, or passes on
@@ -414,7 +448,7 @@ export class TrailField {
       this.#lay(agent, from, to);
       return;
     }
-    if (!this.#fieldBeyond(across, down)) {
+    if (!this.#fieldBeyond.has(across, down)) {
       this.#heading[agent] = this.#draws.next() * Math.PI * 2;
       return;
     }
@@ -454,7 +488,7 @@ export class TrailField {
     if (cellAt(this.#food, cell) >= foodShape(this.#rules).hearthHeight / 3) {
       this.#fedAt[agent] = this.#quanta; // in a hearth: within its reach of a food's centre
     }
-    if (this.#scout[agent] && this.#othersFood(agent, cell, to) < SCOUT_SCENT) {
+    if (this.#scout[agent] && this.#othersFood(this.#homeOf(agent), cell, to) < SCOUT_SCENT) {
       return; // a scout searching: nothing laid
     }
     recordTraffic(this.#traffic, GRID, from, to);

@@ -115,11 +115,10 @@ export class TrailTiles {
     if (found) {
       return found.field;
     }
-    const field = new TrailField(
-      this.#rules,
-      this.#randomness.fork(`tile ${placed.across},${placed.down}`),
-      (across, down) => this.#has({ across: placed.across + across, down: placed.down + down }),
-    );
+    const field = new TrailField(this.#rules, this.#randomness.fork(`tile ${placed.across},${placed.down}`), {
+      has: (across, down) => this.#fieldBeside(placed, across, down) !== undefined,
+      smellAt: (across, down, place, home) => this.#fieldBeside(placed, across, down)?.smellAt(place, home) ?? 0,
+    });
     field.advanceTo(this.#quanta * QUANTUM_BEATS);
     const made = { tile: placed, field };
     this.#made.push(made);
@@ -127,9 +126,10 @@ export class TrailTiles {
     this.#inOrder.sort((first, second) => first.tile.down - second.tile.down || first.tile.across - second.tile.across);
     return field;
   }
-  #has(tile: Tile): boolean {
-    const placed = this.#wrapped(tile);
-    return this.#made.some((made) => sameTile(made.tile, placed));
+  // The field `across` and `down` tiles from a tile, if there is one: none is made
+  #fieldBeside(tile: Tile, across: number, down: number): TrailField | undefined {
+    const placed = this.#wrapped({ across: tile.across + across, down: tile.down + down });
+    return this.#made.find((made) => sameTile(made.tile, placed))?.field;
   }
   #wrapped({ across, down }: Tile): Tile {
     const side = this.#wrapAcross;
