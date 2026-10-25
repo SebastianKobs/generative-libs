@@ -161,6 +161,11 @@ export class TrailField {
   get tints(): Tints {
     return this.#tints;
   }
+  // how many agents have been let loose here, those let go or handed on counted (at most MAX_AGENTS):
+  // none while the field has only had food
+  get agentsLoose(): number {
+    return this.#agents;
+  }
   // the field's cells a side, the tints' grid
   static get grid(): number {
     return GRID;

@@ -666,3 +666,17 @@ test('a tile made late runs from the beat the tiles have reached, and costs noth
   assert.equal(tiles.fields[0].field.quanta, 4008);
   assert.ok(total(tiles.fields[0].field.traffic) > 0);
 });
+
+test('the agents loose: none for food alone, perSeed for a seed once a quantum has run, those let go still counted', () => {
+  const field = fieldOf(1, { ...RULES, lifetime: 2 });
+  assert.equal(field.agentsLoose, 0);
+  field.food(0.3, 0.6);
+  field.advanceTo(2);
+  assert.equal(field.agentsLoose, 0, 'food alone lets none loose');
+  field.seed(0.3, 0.6);
+  assert.equal(field.agentsLoose, 0, 'a seed told is run in the next quantum');
+  field.advanceTo(2.5);
+  assert.equal(field.agentsLoose, RULES.perSeed);
+  field.advanceTo(40);
+  assert.equal(field.agentsLoose, RULES.perSeed, 'past their lifetime, they were still let loose here');
+});
