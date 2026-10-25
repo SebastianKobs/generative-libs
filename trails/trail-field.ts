@@ -25,6 +25,8 @@ import { Traffic } from './traffic.ts';
 //   trailPasses, tintPasses: how many times a quantum the trail and the colors diffuse and fade (once a step, 4, if not said):
 //     fewer passes spread as far and fade as much, each pass by more, and cost less; the colors steer no agent, so theirs
 //     changes only how they blur, the trail's how the agents follow it
+//   tintGrid: the colors' cells a side (the field's 160 if not said): coarser, they diffuse in less time, weigh as much and blur
+//     as far across the floor, and show steps sooner along a dense thread; changed, the colors are carried onto the new grid
 //   edges: what the plane's edges do to an agent ('turn' if not said): 'turn' turns it away a cell inside; 'pass' lets it go once it steps
 //     past the plane, kept in `leavers` for whoever runs the field next to it (TrailTiles), unless nothing lies beyond: then it turns away
 export interface TrailRules {
@@ -44,6 +46,7 @@ export interface TrailRules {
   readonly starveAfter?: number;
   readonly trailPasses?: number;
   readonly tintPasses?: number;
+  readonly tintGrid?: number;
   readonly edges?: 'turn' | 'pass';
 }
 // An agent as it passes from one field to the next: where it stands and its home, in the plane of the field it is handed to (0 to 1
@@ -101,6 +104,9 @@ interface Told {
   readonly traveller?: Traveller | undefined;
 }
 
+// The colors' grids as the field writes them
+type ColorGrids = Record<keyof Tints, Float32Array>;
+
 interface Point {
   readonly x: number;
   readonly y: number;
@@ -141,6 +147,8 @@ export class TrailField {
   readonly #draws: Randomness;
   readonly #trail = new Float32Array(GRID * GRID);
   readonly #scratch = new Float32Array(GRID * GRID);
+  #tintGrid: number; // the colors' cells a side
+  #tintScratch: Float32Array;
   readonly #food = new Float32Array(GRID * GRID);
   readonly #traffic = new Traffic(GRID);
   readonly #agentX = new Float32Array(MAX_AGENTS);
@@ -154,12 +162,7 @@ export class TrailField {
   readonly #agentTint = new Float32Array(MAX_AGENTS * 3); // the color each agent carries, red, green, blue
   readonly #agentTinted = new Uint8Array(MAX_AGENTS); // 1 where it carries one
   readonly #gone = new Uint8Array(MAX_AGENTS); // 1 once it left for another field: no age lets it go without a lifetime
-  readonly #tints = {
-    red: new Float32Array(GRID * GRID),
-    green: new Float32Array(GRID * GRID),
-    blue: new Float32Array(GRID * GRID),
-    weight: new Float32Array(GRID * GRID),
-  };
+  #tints: ColorGrids;
   readonly #told: Told[] = [];
   readonly #leavers: Traveller[] = [];
   readonly #fieldBeyond: FieldBeyond;
@@ -182,13 +185,16 @@ export class TrailField {
     this.#rules = rules;
     this.#draws = randomness.fork('agents');
     this.#fieldBeyond = fieldBeyond;
+    this.#tintGrid = rules.tintGrid ?? GRID;
+    this.#tints = colorGrids(this.#tintGrid);
+    this.#tintScratch = new Float32Array(this.#tintGrid ** 2);
   }
 
   // where agents ran, TRAFFIC_GRID cells a side, row by row: read, don't change
   get traffic(): Readonly<Float32Array> {
     return this.#traffic.values;
   }
-  // the colors the agents laid, GRID cells a side, row by row: read, don't change
+  // the colors the agents laid, tintGrid cells a side, row by row: read, don't change
   get tints(): Tints {
     return this.#tints;
   }
@@ -213,9 +219,13 @@ export class TrailField {
   get tookIn(): number {
     return this.#tookIn;
   }
-  // the field's cells a side, the tints' grid
+  // the field's cells a side
   static get grid(): number {
     return GRID;
+  }
+  // the colors' cells a side, as the rules say
+  get tintGrid(): number {
+    return this.#tintGrid;
   }
   get rules(): TrailRules {
     return this.#rules;
@@ -230,6 +240,10 @@ export class TrailField {
   // counts from the next quantum on
   set rules(rules: TrailRules) {
     this.#rules = rules;
+    const tintGrid = rules.tintGrid ?? GRID;
+    if (tintGrid !== this.#tintGrid) {
+      this.#carryTintsOnto(tintGrid);
+    }
   }
 
   // A food at (x, y): a hearth and a scent agents are drawn to (a plant is born there)
@@ -334,7 +348,7 @@ export class TrailField {
     for (let step = 0; step < STEPS_PER_QUANTUM; step++) {
       this.#liveAgents = this.#moveAgents();
       if (passDue(step, trailPasses)) {
-        strongestTrail = this.#diffuse(this.#trail, trailPasses);
+        strongestTrail = this.#diffuse(this.#trail, this.#scratch, GRID, trailPasses);
       }
       if (passDue(step, tintPasses)) {
         strongestTint = this.#diffuseTints(tintPasses);
@@ -350,19 +364,41 @@ export class TrailField {
     }
   }
 
-  // a grid diffused and faded by one of `passes` passes a quantum; the strongest cell it leaves
-  #diffuse(grid: Float32Array, passes: number): number {
+  // a grid `side` cells a side diffused and faded by one of `passes` passes a quantum; the strongest cell it leaves.
+  // A blur spreads by cells: on a coarser grid each pass gives less, so it spreads as far across the floor
+  #diffuse(grid: Float32Array, scratch: Float32Array, side: number, passes: number): number {
     const stepsAPass = STEPS_PER_QUANTUM / passes;
-    return diffuseAndFade(grid, this.#scratch, this.#rules.fade ** stepsAPass, GIVEN_BY_NEIGHBOUR * stepsAPass);
+    const given = GIVEN_BY_NEIGHBOUR * stepsAPass * (side / GRID) ** 2;
+    return diffuseAndFade(grid, scratch, side, this.#rules.fade ** stepsAPass, given);
   }
   // every color channel diffused so; the strongest cell of the colors' weight
   #diffuseTints(passes: number): number {
     let strongest = 0;
     for (const [name, channel] of Object.entries(this.#tints)) {
-      const strongestOfChannel = this.#diffuse(channel, passes);
+      const strongestOfChannel = this.#diffuse(channel, this.#tintScratch, this.#tintGrid, passes);
       strongest = name === 'weight' ? strongestOfChannel : strongest;
     }
     return strongest;
+  }
+
+  // The colors onto a grid `side` cells a side, each cell from the old one under its middle: a cell holds its color a field cell,
+  // so it carries over as it is, and the colors weigh as much
+  #carryTintsOnto(side: number): void {
+    const before = this.#tints;
+    const oldSide = this.#tintGrid;
+    this.#tints = colorGrids(side);
+    for (const [name, channel] of Object.entries(this.#tints)) {
+      const from = before[name as keyof Tints];
+      for (let row = 0; row < side; row++) {
+        const oldRow = Math.floor(((row + 0.5) * oldSide) / side);
+        for (let column = 0; column < side; column++) {
+          const oldColumn = Math.floor(((column + 0.5) * oldSide) / side);
+          channel[row * side + column] = cellAt(from, oldRow * oldSide + oldColumn);
+        }
+      }
+    }
+    this.#tintGrid = side;
+    this.#tintScratch = new Float32Array(side * side);
   }
 
   // The trail, traffic and colors to nothing; the food stays, for a seed or an arriving agent to find
@@ -606,13 +642,16 @@ export class TrailField {
     this.#traffic.record(from, to);
     this.#trail[cell] = Math.min(TRAIL_CAP, cellAt(this.#trail, cell) + DEPOSIT);
     if (this.#agentTinted[agent]) {
-      this.#tint(agent, cell);
+      this.#tint(agent, to);
     }
   }
-  // the agent's color laid in a cell, with the trail's deposit as its weight, less the further it is from where it was let loose
-  #tint(agent: number, cell: number): void {
+  // the agent's color laid in the color's cell at `to`, with the trail's deposit as its weight, less the further it is from where
+  // it was let loose; shared over the field's cells the color's cell spans, so a color weighs as much on the floor
+  #tint(agent: number, to: Point): void {
     const { red, green, blue, weight } = this.#tints;
-    const laid = DEPOSIT * this.#tintNearHome(agent);
+    const cellWidth = GRID / this.#tintGrid; // in the field's cells
+    const cell = Math.floor(to.y / cellWidth) * this.#tintGrid + Math.floor(to.x / cellWidth);
+    const laid = (DEPOSIT * this.#tintNearHome(agent)) / cellWidth ** 2;
     red[cell] = cellAt(red, cell) + laid * cellAt(this.#agentTint, agent * 3);
     green[cell] = cellAt(green, cell) + laid * cellAt(this.#agentTint, agent * 3 + 1);
     blue[cell] = cellAt(blue, cell) + laid * cellAt(this.#agentTint, agent * 3 + 2);
@@ -669,6 +708,15 @@ export function foodReach(rules: TrailRules): number {
   return foodShape(rules).reach / GRID;
 }
 
+// The colors' grids, `side` cells a side, empty
+function colorGrids(side: number): ColorGrids {
+  return {
+    red: new Float32Array(side * side),
+    green: new Float32Array(side * side),
+    blue: new Float32Array(side * side),
+    weight: new Float32Array(side * side),
+  };
+}
 // A food's shape under the rules, their own where they say, else the hearth's and scent's below
 function foodShape(rules: TrailRules): FoodShape {
   const scentWidth = rules.scentReach === undefined ? SCENT.width : rules.scentReach ** 2;
@@ -690,17 +738,17 @@ function foodAt(shape: FoodShape, distanceSquared: number): number {
   return hearth + shape.scentHeight * Math.exp(-distanceSquared / shape.scentWidth);
 }
 // Each cell: mostly itself, a little of the neighbours it has (four inside, fewer at the edge), then the slow fade; the strongest cell it leaves
-function diffuseAndFade(trail: Float32Array, scratch: Float32Array, fade: number, given: number): number {
+function diffuseAndFade(trail: Float32Array, scratch: Float32Array, side: number, fade: number, given: number): number {
   const keepOwn = 1 - 4 * given;
   let strongest = 0;
-  for (let row = 0; row < GRID; row++) {
-    for (let column = 0; column < GRID; column++) {
-      const cell = row * GRID + column;
+  for (let row = 0; row < side; row++) {
+    for (let column = 0; column < side; column++) {
+      const cell = row * side + column;
       const around =
         (column > 0 ? cellAt(trail, cell - 1) : 0)
-        + (column < GRID - 1 ? cellAt(trail, cell + 1) : 0)
-        + (row > 0 ? cellAt(trail, cell - GRID) : 0)
-        + (row < GRID - 1 ? cellAt(trail, cell + GRID) : 0);
+        + (column < side - 1 ? cellAt(trail, cell + 1) : 0)
+        + (row > 0 ? cellAt(trail, cell - side) : 0)
+        + (row < side - 1 ? cellAt(trail, cell + side) : 0);
       scratch[cell] = (cellAt(trail, cell) * keepOwn + around * given) * fade;
       strongest = Math.max(strongest, cellAt(scratch, cell));
     }

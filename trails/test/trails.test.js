@@ -1139,25 +1139,29 @@ test("each field's time for its last quantum in ms: measured for the fields that
 
 // ---------- the trail and the colors diffused fewer times a quantum ----------
 
-// a field's colors after a few quanta of a seed every beat at its middle, diffused `tintPasses` times a quantum
-function colorsOf(tintPasses) {
-  const field = fieldOf(3, { ...SENSE, tintPasses });
+// a field's colors after a few quanta of a seed every beat at its middle, diffused `tintPasses` times a quantum, on a grid
+// `tintGrid` cells a side
+function colorsOf(tintPasses, tintGrid) {
+  const field = fieldOf(3, { ...SENSE, tintPasses, tintGrid });
   for (let beat = 0; beat < 6; beat++) {
     field.seed(0.5, 0.5, RED);
     field.advanceTo(beat + 1);
   }
   return field.tints.weight;
 }
-// how much color was laid, and how far it lies from where it was laid, on average (the root of its second moment)
+// how much color was laid, and how far it lies from where it was laid, on average (the root of its second moment),
+// both in the field's cells, whatever the colors' grid
 function weightAndSpread(weight) {
   const grid = TrailField.grid;
+  const side = Math.sqrt(weight.length);
+  const cellWidth = grid / side;
   let mass = 0;
   let moment = 0;
   weight.forEach((value, cell) => {
-    const dx = (cell % grid) - grid / 2;
-    const dy = Math.floor(cell / grid) - grid / 2;
-    mass += value;
-    moment += value * (dx * dx + dy * dy);
+    const dx = ((cell % side) + 0.5) * cellWidth - grid / 2;
+    const dy = (Math.floor(cell / side) + 0.5) * cellWidth - grid / 2;
+    mass += value * cellWidth ** 2;
+    moment += value * cellWidth ** 2 * (dx * dx + dy * dy);
   });
   return { mass, spread: Math.sqrt(moment / mass) };
 }
@@ -1175,6 +1179,68 @@ test('the passes not said are one a step, as before: the same colors as four pas
 
 test('the colors diffused once a quantum differ from those diffused at every step: the passes are taken', () => {
   assert.ok(!sameTraffic(colorsOf(1), colorsOf(4)));
+});
+
+// ---------- the colors on a grid coarser than the field's ----------
+
+const TINT_GRIDS = [80, 120, 160];
+
+test("the colors lie on the rules' grid, tintGrid cells a side; the field's if not said", () => {
+  const field = fieldOf(3, { ...SENSE, tintGrid: 120 });
+  assert.equal(field.tintGrid, 120);
+  assert.equal(field.tints.weight.length, 120 * 120);
+  assert.equal(fieldOf(3, SENSE).tintGrid, TrailField.grid);
+  assert.equal(colorsOf(1).length, TrailField.grid ** 2);
+});
+
+test("the colors on a coarser grid weigh as much and spread as far as on the field's, in the field's cells", () => {
+  // measured on the field's grid before the colors' grid could be coarser (2026-10-25)
+  const onTheFieldsGrid = { 1: { mass: 153.261, spread: 25.757 }, 4: { mass: 163.109, spread: 25.8 } };
+  for (const tintGrid of TINT_GRIDS) {
+    for (const tintPasses of [1, 4]) {
+      const { mass, spread } = weightAndSpread(colorsOf(tintPasses, tintGrid));
+      const before = onTheFieldsGrid[tintPasses];
+      const which = `grid ${tintGrid}, passes ${tintPasses}`;
+      assert.ok(Math.abs(mass / before.mass - 1) < 0.1, `${which}: weight ${mass} against ${before.mass}`);
+      assert.ok(Math.abs(spread / before.spread - 1) < 0.1, `${which}: spread ${spread} against ${before.spread}`);
+    }
+  }
+});
+
+test("the colors blur as far a quantum on any grid as on the field's: a variance of 4 × 0.015 field cells² a step", () => {
+  // the agents gone after 2 quanta, the colors only blur and fade: what's added to their spread squared is the blur's
+  for (const tintGrid of TINT_GRIDS) {
+    for (const tintPasses of [1, 4]) {
+      const field = fieldOf(3, { ...SENSE, tintPasses, tintGrid, lifetime: 2 });
+      field.seed(0.5, 0.5, RED);
+      field.advanceTo(2); // 4 quanta of half a beat
+      const early = weightAndSpread(field.tints.weight).spread;
+      field.advanceTo(12);
+      const late = weightAndSpread(field.tints.weight).spread;
+      const added = late ** 2 - early ** 2;
+      const expected = 20 * 4 * 4 * 0.015; // quanta × steps × 4 neighbours × each one's share
+      const which = `grid ${tintGrid}, passes ${tintPasses}`;
+      assert.ok(Math.abs(added / expected - 1) < 0.1, `${which}: ${added} cells² added, ${expected} expected`);
+    }
+  }
+});
+
+test('the colors carried onto a new grid as the rules change it: the same weight and spread, no flash', () => {
+  const field = fieldOf(3, { ...SENSE, tintPasses: 1 });
+  for (let beat = 0; beat < 6; beat++) {
+    field.seed(0.5, 0.5, RED);
+    field.advanceTo(beat + 1);
+  }
+  const before = weightAndSpread(field.tints.weight);
+  field.rules = { ...SENSE, tintPasses: 1, tintGrid: 80 };
+  assert.equal(field.tintGrid, 80);
+  assert.equal(field.tints.weight.length, 80 * 80);
+  // each new cell takes the old one under its middle, not their average: a few percent off where the threads are fine
+  const after = weightAndSpread(field.tints.weight);
+  assert.ok(Math.abs(after.mass / before.mass - 1) < 0.05, `weight ${after.mass} against ${before.mass}`);
+  assert.ok(Math.abs(after.spread / before.spread - 1) < 0.05, `spread ${after.spread} against ${before.spread}`);
+  field.advanceTo(8);
+  assert.ok(weightAndSpread(field.tints.weight).mass > 0, 'running on, on the new grid');
 });
 
 // ---------- a field asleep: far from where it's looked at, it waits as it is (LOOK23h) ----------
