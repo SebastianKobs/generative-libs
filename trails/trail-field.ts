@@ -9,19 +9,59 @@ import { fadeTraffic, recordTraffic, TRAFFIC_GRID } from './traffic.ts';
 //   turn: how hard it turns towards the stronger side, in radians
 //   fade: how much of a thread is left after a step (0 to 1, near 1 lasts long)
 //   perSeed: how many agents a seed lets loose
+//   scent: how strong a food's wide, faint scent is at its centre (0.08 if not said): stronger, it pulls against the trail
+//   scentReach: how far that scent spreads, in the field's cells, to a third of its strength (23 if not said)
+//   hearth: how strong a food's narrow hearth is at its centre (1 if not said): stronger, threads run into the food, not past it
+//   hearthReach: how far that hearth spreads, in the field's cells, to a third of its strength (6.4 if not said)
+//   lifetime: how many quanta an agent runs before it's let go (forever if not said), so threads stay near where it was let loose
+//   scouts: the share of agents let loose as scouts (none if not said): a scout smells no trail, nor the food where it was let loose,
+//     only the others', so it walks to a food nearby and lays a trail the others can follow: new threads grow between foods. It lays
+//     its trail and traffic only where it smells another food, so its search leaves nothing for the others to follow into nowhere
+//   scoutLifetime: how many quanta a scout runs before it's let go (the lifetime if not said)
+//   tintReach: how far from where it was let loose an agent's color counts, in the field's cells, to 1/e (all the way if not said):
+//     so a thread shows the color of the plant nearest, not the one with the most agents
 export interface TrailRules {
   readonly sense: number;
   readonly sensorAngle: number;
   readonly turn: number;
   readonly fade: number;
   readonly perSeed: number;
+  readonly scent?: number;
+  readonly scentReach?: number;
+  readonly hearth?: number;
+  readonly hearthReach?: number;
+  readonly lifetime?: number;
+  readonly scouts?: number;
+  readonly scoutLifetime?: number;
+  readonly tintReach?: number;
+}
+// A food's shape under the rules: its hearth's and scent's heights and widths (in cells squared), and how far it's laid
+interface FoodShape {
+  readonly hearthHeight: number;
+  readonly hearthWidth: number;
+  readonly scentHeight: number;
+  readonly scentWidth: number;
+  readonly reach: number;
+}
+
+// A color an agent carries and lays with its trail: red, green and blue, 0 to 1
+export type Tint = readonly [number, number, number];
+// The colors laid on the field, each cell's sums of red, green and blue and the weight they were laid with: a cell's color is its sums
+// over its weight, and they spread and fade with the trail
+export interface Tints {
+  readonly red: Readonly<Float32Array>;
+  readonly green: Readonly<Float32Array>;
+  readonly blue: Readonly<Float32Array>;
+  readonly weight: Readonly<Float32Array>;
 }
 
 // What a caller has told that no quantum has run yet
 interface Told {
-  readonly kind: 'food' | 'seed';
+  readonly kind: 'food' | 'foodGone' | 'seed';
   readonly x: number;
   readonly y: number;
+  readonly tint?: Tint | undefined;
+  readonly agents?: number | undefined;
 }
 
 const GRID = 160; // the field's cells a side
@@ -41,6 +81,7 @@ const SEED_SCATTER = 3; // cells a seed's agents start apart
 const KEEP_OWN = 0.94; // diffusing, a cell keeps this much of itself ...
 const GIVEN_BY_NEIGHBOUR = 0.015; // ... and takes this much of each of its four neighbours
 const EDGE_MARGIN = 1; // cells from the edge an agent turns away
+const SCOUT_SCENT = 0.01; // what a scout must smell of another food where it steps to lay its trail there
 
 // A slime mould (Physarum, after Jeff Jones's 2010 model): agents sense the trail ahead, left and
 // right, turn towards the strongest, step and deposit; the trail diffuses a little and fades slowly.
@@ -60,6 +101,18 @@ export class TrailField {
   readonly #agentX = new Float32Array(MAX_AGENTS);
   readonly #agentY = new Float32Array(MAX_AGENTS);
   readonly #heading = new Float32Array(MAX_AGENTS);
+  readonly #bornAt = new Float32Array(MAX_AGENTS); // the quantum each agent was let loose in
+  readonly #homeX = new Float32Array(MAX_AGENTS); // where each was let loose, in cells: a scout doesn't smell the food there
+  readonly #homeY = new Float32Array(MAX_AGENTS);
+  readonly #scout = new Uint8Array(MAX_AGENTS); // 1 for a scout
+  readonly #agentTint = new Float32Array(MAX_AGENTS * 3); // the color each agent carries, red, green, blue
+  readonly #agentTinted = new Uint8Array(MAX_AGENTS); // 1 where it carries one
+  readonly #tints = {
+    red: new Float32Array(GRID * GRID),
+    green: new Float32Array(GRID * GRID),
+    blue: new Float32Array(GRID * GRID),
+    weight: new Float32Array(GRID * GRID),
+  };
   readonly #told: Told[] = [];
   #rules: TrailRules;
   #agents = 0;
@@ -76,6 +129,14 @@ export class TrailField {
   get traffic(): Readonly<Float32Array> {
     return this.#traffic;
   }
+  // the colors the agents laid, GRID cells a side, row by row: read, don't change
+  get tints(): Tints {
+    return this.#tints;
+  }
+  // the field's cells a side, the tints' grid
+  static get grid(): number {
+    return GRID;
+  }
   get rules(): TrailRules {
     return this.#rules;
   }
@@ -88,9 +149,13 @@ export class TrailField {
   food(x: number, y: number): void {
     this.#told.push({ kind: 'food', x, y });
   }
-  // A seed at (x, y): `perSeed` agents let loose there (a note played there)
-  seed(x: number, y: number): void {
-    this.#told.push({ kind: 'seed', x, y });
+  // The food at (x, y) taken away: its hearth and scent as food() laid them, under the same rules (a plant gone)
+  foodGone(x: number, y: number): void {
+    this.#told.push({ kind: 'foodGone', x, y });
+  }
+  // A seed at (x, y): `agents` let loose there, `perSeed` if not said (a note played there), each carrying `tint` where it's given
+  seed(x: number, y: number, tint?: Tint, agents?: number): void {
+    this.#told.push({ kind: 'seed', x, y, tint, agents });
   }
 
   // how many quanta have been reached, the idle ones skipped included
@@ -122,31 +187,47 @@ export class TrailField {
     for (let step = 0; step < STEPS_PER_QUANTUM; step++) {
       this.#moveAgents();
       diffuseAndFade(this.#trail, this.#scratch, this.#rules.fade);
+      for (const channel of Object.values(this.#tints)) {
+        diffuseAndFade(channel, this.#scratch, this.#rules.fade);
+      }
     }
     fadeTraffic(this.#traffic, this.#rules.fade ** STEPS_PER_QUANTUM);
     this.#quanta++;
   }
 
-  #apply({ kind, x, y }: Told): void {
-    if (kind === 'food') {
-      addFood(this.#food, x, y);
+  #apply({ kind, x, y, tint, agents }: Told): void {
+    if (kind === 'food' || kind === 'foodGone') {
+      addFood(this.#food, { x, y }, this.#rules, kind === 'food' ? 1 : -1);
       return;
     }
-    for (let agent = 0; agent < this.#rules.perSeed; agent++) {
-      this.#letLoose(x, y);
+    for (let agent = 0; agent < (agents ?? this.#rules.perSeed); agent++) {
+      this.#letLoose(x, y, tint);
     }
   }
 
   // Once MAX_AGENTS are loose, the oldest goes first
-  #letLoose(x: number, y: number): void {
+  #letLoose(x: number, y: number, tint: Tint | undefined): void {
     const slot = this.#agents < MAX_AGENTS ? this.#agents++ : this.#oldest++ % MAX_AGENTS;
     this.#agentX[slot] = x * GRID + (this.#draws.next() - 0.5) * SEED_SCATTER;
     this.#agentY[slot] = y * GRID + (this.#draws.next() - 0.5) * SEED_SCATTER;
     this.#heading[slot] = this.#draws.next() * Math.PI * 2;
+    this.#bornAt[slot] = this.#quanta;
+    this.#homeX[slot] = x * GRID;
+    this.#homeY[slot] = y * GRID;
+    // drawn only where the rules have scouts, so a field without them draws as before
+    this.#scout[slot] = this.#rules.scouts !== undefined && this.#draws.next() < this.#rules.scouts ? 1 : 0;
+    this.#agentTinted[slot] = tint ? 1 : 0;
+    this.#agentTint.set(tint ?? [0, 0, 0], slot * 3);
   }
 
   #moveAgents(): void {
+    const lifetime = this.#rules.lifetime ?? Infinity;
+    const scoutLifetime = this.#rules.scoutLifetime ?? lifetime;
     for (let agent = 0; agent < this.#agents; agent++) {
+      const age = this.#quanta - cellAt(this.#bornAt, agent);
+      if (age >= (this.#scout[agent] ? scoutLifetime : lifetime)) {
+        continue; // let go: its slot taken by the next one let loose, the oldest first
+      }
       this.#steer(agent);
       this.#step(agent);
     }
@@ -184,7 +265,16 @@ export class TrailField {
       return 0;
     }
     const cell = row * GRID + column;
+    if (this.#scout[agent]) {
+      return this.#othersFood(agent, cell, { x, y });
+    }
     return cellAt(this.#trail, cell) + cellAt(this.#food, cell) * FOOD_WEIGHT;
+  }
+  // What a scout smells at a place: the food there but its home's, as food() would have laid it there
+  #othersFood(agent: number, cell: number, { x, y }: { x: number; y: number }): number {
+    const distanceSquared = (x - cellAt(this.#homeX, agent)) ** 2 + (y - cellAt(this.#homeY, agent)) ** 2;
+    const home = foodAt(foodShape(this.#rules), distanceSquared);
+    return Math.max(0, cellAt(this.#food, cell) - home) * FOOD_WEIGHT;
   }
 
   // Steps along its heading, leaving traffic and a deposit; at the edge, turns away to a new heading
@@ -196,36 +286,86 @@ export class TrailField {
       this.#heading[agent] = this.#draws.next() * Math.PI * 2;
       return;
     }
-    recordTraffic(this.#traffic, GRID, from, to);
     this.#agentX[agent] = to.x;
     this.#agentY[agent] = to.y;
     const cell = Math.floor(to.y) * GRID + Math.floor(to.x);
+    if (this.#scout[agent] && this.#othersFood(agent, cell, to) < SCOUT_SCENT) {
+      return; // a scout searching: nothing laid
+    }
+    recordTraffic(this.#traffic, GRID, from, to);
     this.#trail[cell] = Math.min(TRAIL_CAP, cellAt(this.#trail, cell) + DEPOSIT);
+    if (this.#agentTinted[agent]) {
+      this.#tint(agent, cell);
+    }
+  }
+  // the agent's color laid in a cell, with the trail's deposit as its weight, less the further it is from where it was let loose
+  #tint(agent: number, cell: number): void {
+    const { red, green, blue, weight } = this.#tints;
+    const laid = DEPOSIT * this.#tintNearHome(agent);
+    red[cell] = cellAt(red, cell) + laid * cellAt(this.#agentTint, agent * 3);
+    green[cell] = cellAt(green, cell) + laid * cellAt(this.#agentTint, agent * 3 + 1);
+    blue[cell] = cellAt(blue, cell) + laid * cellAt(this.#agentTint, agent * 3 + 2);
+    weight[cell] = cellAt(weight, cell) + laid;
+  }
+  #tintNearHome(agent: number): number {
+    const reach = this.#rules.tintReach;
+    if (reach === undefined) {
+      return 1;
+    }
+    const fromHome = Math.hypot(
+      cellAt(this.#agentX, agent) - cellAt(this.#homeX, agent),
+      cellAt(this.#agentY, agent) - cellAt(this.#homeY, agent),
+    );
+    return Math.exp(-fromHome / reach);
   }
 }
 
-// A food's hearth and scent added to the cells round (x, y), on the plane 0 to 1
-function addFood(food: Float32Array, x: number, y: number): void {
+// A food's hearth and scent added to the cells round (x, y), on the plane 0 to 1, or taken away (`sign` -1), never below none; its
+// hearth and scent as the rules say, spread over the cells they reach, twice their reach at least
+function addFood(food: Float32Array, { x, y }: { x: number; y: number }, rules: TrailRules, sign: 1 | -1): void {
   const centreX = x * GRID;
   const centreY = y * GRID;
+  const shape = foodShape(rules);
+  const reach = shape.reach;
   for (
-    let row = Math.max(0, Math.floor(centreY - FOOD_REACH));
-    row <= Math.min(GRID - 1, Math.ceil(centreY + FOOD_REACH));
+    let row = Math.max(0, Math.floor(centreY - reach));
+    row <= Math.min(GRID - 1, Math.ceil(centreY + reach));
     row++
   ) {
     for (
-      let column = Math.max(0, Math.floor(centreX - FOOD_REACH));
-      column <= Math.min(GRID - 1, Math.ceil(centreX + FOOD_REACH));
+      let column = Math.max(0, Math.floor(centreX - reach));
+      column <= Math.min(GRID - 1, Math.ceil(centreX + reach));
       column++
     ) {
       const distanceSquared = (column - centreX) ** 2 + (row - centreY) ** 2;
-      const hearth = HEARTH.height * Math.exp(-distanceSquared / HEARTH.width);
-      const scent = SCENT.height * Math.exp(-distanceSquared / SCENT.width);
-      food[row * GRID + column] = cellAt(food, row * GRID + column) + hearth + scent;
+      food[row * GRID + column] = Math.max(
+        0,
+        cellAt(food, row * GRID + column) + sign * foodAt(shape, distanceSquared),
+      );
     }
   }
 }
 
+// A food's shape under the rules, their own where they say, else the hearth's and scent's below
+function foodShape(rules: TrailRules): FoodShape {
+  const scentWidth = rules.scentReach === undefined ? SCENT.width : rules.scentReach ** 2;
+  const hearthWidth = rules.hearthReach === undefined ? HEARTH.width : rules.hearthReach ** 2;
+  return {
+    hearthHeight: rules.hearth ?? HEARTH.height,
+    hearthWidth,
+    scentHeight: rules.scent ?? SCENT.height,
+    scentWidth,
+    reach: Math.max(FOOD_REACH, 2 * Math.sqrt(scentWidth), 2 * Math.sqrt(hearthWidth)),
+  };
+}
+// A food's hearth and scent at a distance from it, squared, in cells; none past its reach, as it's laid
+function foodAt(shape: FoodShape, distanceSquared: number): number {
+  if (distanceSquared > shape.reach ** 2 * 2) {
+    return 0;
+  }
+  const hearth = shape.hearthHeight * Math.exp(-distanceSquared / shape.hearthWidth);
+  return hearth + shape.scentHeight * Math.exp(-distanceSquared / shape.scentWidth);
+}
 // Each cell inside the edge: mostly itself, a little of its four neighbours, then the slow fade
 function diffuseAndFade(trail: Float32Array, scratch: Float32Array, fade: number): void {
   for (let row = 1; row < GRID - 1; row++) {

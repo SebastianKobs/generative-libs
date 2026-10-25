@@ -145,3 +145,250 @@ test('a field with nothing loose skips its idle quanta: late, it runs as a fresh
   assert.ok(total(fresh.traffic) > 0);
   assert.ok(sameTraffic(late.traffic, fresh.traffic));
 });
+
+// ---------- the rules a tuning pass added: food's shape, lifetimes, scouts, tints ----------
+
+const AT_A = { x: 0.3, y: 0.5 };
+const AT_B = { x: 0.6, y: 0.5 }; // 48 cells from A on the 160-cell field
+const FAR_FROM_A = { x: 0.9, y: 0.5 }; // 96 cells: out of reach of any smell of its
+const MANY = 6; // agents a test seed lets loose, enough that a chance run doesn't decide
+const SENSE = { ...RULES, perSeed: MANY };
+// the rules' effect over several randomnesses, summed: the traffic in a box on the plane after `beats`, with what was told first
+function massAfter(rules, { told, beats, box }) {
+  let mass = 0;
+  for (const seed of SEEDS) {
+    const field = fieldOf(seed, rules);
+    told(field);
+    field.advanceTo(beats);
+    mass += massIn(field.traffic, box);
+  }
+  return mass;
+}
+const around = ({ x, y }, reach) => ({ x0: x - reach, x1: x + reach, y0: y - reach, y1: y + reach });
+const totalAfter = (rules, told, beats) => {
+  const field = fieldOf(1, rules);
+  told(field);
+  field.advanceTo(beats);
+  return total(field.traffic);
+};
+
+test('a food taken away no longer draws agents: its hearth is gone with it', () => {
+  const nearA = around(AT_A, 0.04);
+  const mass = (told) =>
+    massAfter(
+      { ...SENSE, hearth: 8, scent: 0 },
+      {
+        told: (field) => {
+          told(field);
+          field.seed(AT_A.x + 0.04, AT_A.y);
+        },
+        beats: 20,
+        box: nearA,
+      },
+    );
+  const kept = mass((field) => field.food(AT_A.x, AT_A.y));
+  const gone = mass((field) => {
+    field.food(AT_A.x, AT_A.y);
+    field.foodGone(AT_A.x, AT_A.y);
+  });
+  assert.ok(gone < 0.5 * kept, `gone ${gone}, kept ${kept}`);
+});
+
+test('taking away a food never laid leaves the field as it was: a cell is never below none', () => {
+  const field = fieldOf(1, SENSE);
+  const control = fieldOf(1, SENSE);
+  field.foodGone(AT_A.x, AT_A.y);
+  for (const each of [field, control]) {
+    each.seed(AT_A.x, AT_A.y);
+  }
+  field.advanceTo(10);
+  control.advanceTo(10);
+  assert.ok(sameTraffic(field.traffic, control.traffic));
+});
+
+test('a stronger hearth draws more of the traffic to the food it was let loose beside', () => {
+  const near = around(AT_A, 0.04);
+  const mass = (hearth) =>
+    massAfter(
+      { ...SENSE, hearth, scent: 0 },
+      {
+        told: (field) => {
+          field.food(AT_A.x, AT_A.y);
+          field.seed(AT_A.x + 0.04, AT_A.y);
+        },
+        beats: 20,
+        box: near,
+      },
+    );
+  assert.ok(mass(8) > 1.5 * mass(0), `strong ${mass(8)}, none ${mass(0)}`);
+});
+
+test('a food whose hearth reaches farther draws agents let loose farther off', () => {
+  const near = around(AT_A, 0.04);
+  const mass = (hearthReach) =>
+    massAfter(
+      { ...SENSE, hearth: 8, hearthReach, scent: 0 },
+      {
+        told: (field) => {
+          field.food(AT_A.x, AT_A.y);
+          field.seed(AT_A.x + 0.09, AT_A.y);
+        },
+        beats: 20,
+        box: near,
+      },
+    );
+  assert.ok(mass(16) > 1.5 * mass(3), `wide ${mass(16)}, narrow ${mass(3)}`);
+});
+
+test('a stronger scent draws agents to a food some way off', () => {
+  const nearB = around(AT_B, 0.05);
+  const mass = (scent) =>
+    massAfter(
+      { ...SENSE, scent, scentReach: 40 },
+      {
+        told: (field) => {
+          field.food(AT_B.x, AT_B.y);
+          field.seed(AT_B.x - 0.12, AT_B.y);
+        },
+        beats: 20,
+        box: nearB,
+      },
+    );
+  assert.ok(mass(0.5) > 1.5 * mass(0), `strong ${mass(0.5)}, none ${mass(0)}`);
+});
+
+test('a scent that spreads farther draws agents from farther off', () => {
+  const nearB = around(AT_B, 0.05);
+  const mass = (scentReach) =>
+    massAfter(
+      { ...SENSE, scent: 1, scentReach },
+      {
+        told: (field) => {
+          field.food(AT_B.x, AT_B.y);
+          field.seed(AT_B.x - 0.25, AT_B.y);
+        },
+        beats: 20,
+        box: nearB,
+      },
+    );
+  assert.ok(mass(40) > 1.5 * mass(5), `wide ${mass(40)}, narrow ${mass(5)}`);
+});
+
+test('an agent is let go after its lifetime in quanta: its traffic only fades after, where unlimited agents go on laying', () => {
+  const told = (field) => field.seed(0.5, 0.5);
+  const traffic = (lifetime) => {
+    const field = fieldOf(1, { ...SENSE, lifetime });
+    told(field);
+    field.advanceTo(3); // 6 quanta, the agents let go after 4
+    const early = total(field.traffic);
+    field.advanceTo(7); // 8 quanta more
+    return { early, late: total(field.traffic) };
+  };
+  const limited = traffic(4);
+  const unlimited = traffic(undefined);
+  assert.ok(limited.late < 0.5 * limited.early, `limited ${limited.early} then ${limited.late}`);
+  assert.ok(unlimited.late > 0.5 * unlimited.early, `unlimited ${unlimited.early} then ${unlimited.late}`);
+});
+
+test('a scout let loose beside only its own food smells nothing to walk to and lays almost no traffic', () => {
+  const told = (field) => {
+    field.food(AT_A.x, AT_A.y);
+    field.seed(AT_A.x, AT_A.y);
+  };
+  const scouts = totalAfter({ ...SENSE, scouts: 1 }, told, 10);
+  const others = totalAfter({ ...SENSE, scouts: 0 }, told, 10);
+  assert.ok(scouts < 0.2 * others, `scouts ${scouts}, agents that are not ${others}`);
+});
+
+test('a scout lays its trail only where it smells another food: little while none is near', () => {
+  const told = (other) => (field) => {
+    field.food(AT_A.x, AT_A.y);
+    field.food(other.x, other.y);
+    field.seed(AT_A.x, AT_A.y);
+  };
+  const rules = { ...SENSE, scouts: 1 };
+  const farOther = totalAfter(rules, told(FAR_FROM_A), 10);
+  const nearOther = totalAfter(rules, told(AT_B), 10);
+  assert.ok(nearOther > 3 * farOther, `near ${nearOther}, far ${farOther}`);
+});
+
+test('a scout walks to a food nearby: most of its traffic is round the other food', () => {
+  let nearOther = 0;
+  let everywhere = 0;
+  for (const seed of SEEDS) {
+    const field = fieldOf(seed, { ...SENSE, scouts: 1 });
+    field.food(AT_A.x, AT_A.y);
+    field.food(AT_B.x, AT_B.y);
+    field.seed(AT_A.x, AT_A.y);
+    field.advanceTo(20);
+    nearOther += massIn(field.traffic, around(AT_B, 0.04));
+    everywhere += total(field.traffic);
+  }
+  assert.ok(nearOther > 0.5 * everywhere, `near ${nearOther} of ${everywhere}`);
+});
+
+test('a scout runs its own lifetime, and the rules lifetime where none is said', () => {
+  const told = (field) => {
+    field.food(AT_A.x, AT_A.y);
+    field.food(AT_B.x, AT_B.y);
+    field.seed(AT_A.x, AT_A.y);
+  };
+  const lateTraffic = (rules) => {
+    const field = fieldOf(1, { ...SENSE, scouts: 1, ...rules });
+    told(field);
+    field.advanceTo(40);
+    return Array.from(field.traffic);
+  };
+  const shortScouts = lateTraffic({ scoutLifetime: 2 });
+  const longScouts = lateTraffic({});
+  const shortAll = lateTraffic({ lifetime: 2 });
+  assert.ok(total(shortScouts) < 0.2 * total(longScouts), 'a short scout lifetime lets them go early');
+  assert.ok(sameTraffic(shortAll, shortScouts), 'scouts have the lifetime where scoutLifetime is not said');
+});
+
+test('a seed with a color lays it with its trail, and a seed without lays none', () => {
+  const red = [0.8, 0.2, 0.1];
+  const tinted = fieldOf(1, SENSE);
+  const plain = fieldOf(1, SENSE);
+  tinted.seed(0.5, 0.5, red);
+  plain.seed(0.5, 0.5);
+  tinted.advanceTo(6);
+  plain.advanceTo(6);
+  const { weight, red: sumRed, green: sumGreen, blue: sumBlue } = tinted.tints;
+  const laid = Array.from(weight.keys()).filter((cell) => weight[cell] > 1e-3);
+  assert.ok(laid.length > 0);
+  for (const cell of laid) {
+    const colorOfCell = [sumRed[cell], sumGreen[cell], sumBlue[cell]].map((sum) => sum / weight[cell]);
+    colorOfCell.forEach((channel, index) => assert.ok(Math.abs(channel - red[index]) < 1e-3, `cell ${cell}`));
+  }
+  assert.equal(
+    plain.tints.weight.every((value) => value === 0),
+    true,
+  );
+  assert.ok(sameTraffic(tinted.traffic, plain.traffic), 'a color changes no trail');
+});
+
+test("an agent's color counts less the farther it is from where it was let loose, to 1/e at tintReach", () => {
+  const laidWeight = (tintReach) => {
+    const field = fieldOf(1, { ...SENSE, tintReach });
+    field.seed(0.5, 0.5, [1, 1, 1]);
+    field.advanceTo(20);
+    return { weight: field.tints.weight.reduce((sum, value) => sum + value, 0), traffic: field.traffic };
+  };
+  const everywhere = laidWeight(undefined);
+  const near = laidWeight(4);
+  assert.ok(near.weight < 0.5 * everywhere.weight, `near ${near.weight}, everywhere ${everywhere.weight}`);
+  assert.ok(sameTraffic(near.traffic, everywhere.traffic), 'the reach changes no trail');
+});
+
+test("a seed's own agents count overrides perSeed, even to none", () => {
+  const rules = { ...RULES, perSeed: 0 };
+  const some = fieldOf(1, rules);
+  some.seed(0.5, 0.5, undefined, 3);
+  some.advanceTo(4);
+  assert.ok(total(some.traffic) > 0, 'more than perSeed');
+  const none = fieldOf(1, { ...RULES, perSeed: 3 });
+  none.seed(0.5, 0.5, undefined, 0);
+  none.advanceTo(4);
+  assert.equal(total(none.traffic), 0, 'fewer than perSeed');
+});
