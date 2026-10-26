@@ -683,7 +683,7 @@ test('the agents loose: none for food alone, perSeed for a seed once a quantum h
   assert.equal(field.agentsLoose, RULES.perSeed, 'past their lifetime, they were still let loose here');
 });
 
-// ---------- a field idle again once its agents are let go and its traces have faded (LOOK23d) ----------
+// ---------- a field idle again once its agents are let go and its traces have faded ----------
 
 const LET_GO = { ...SENSE, lifetime: 4 };
 const FADED_AFTER = 100; // beats: 200 quanta, far past the lifetime and the fade of a thread
@@ -1075,7 +1075,7 @@ test('the traffic cleared is empty, its strongest 0, and records afresh', () => 
   assert.ok(traffic.strongest > 0);
 });
 
-// ---------- what a debug map reads of a field and of the tiles (LOOK23e) ----------
+// ---------- what a debug map reads of a field and of the tiles ----------
 
 test('a hand-over is counted out of the field that let the agents go and into the one that took them in', () => {
   const tiles = tilesOf(1);
@@ -1243,7 +1243,7 @@ test('the colors carried onto a new grid as the rules change it: the same weight
   assert.ok(weightAndSpread(field.tints.weight).mass > 0, 'running on, on the new grid');
 });
 
-// ---------- a field asleep: far from where it's looked at, it waits as it is (LOOK23h) ----------
+// ---------- a field asleep: far from where it's looked at, it waits as it is ----------
 
 const SLEEPING = { ...PASSING, lifetime: 20, starveAfter: 20 };
 const NOBODY = () => false;
