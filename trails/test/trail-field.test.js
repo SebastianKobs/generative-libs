@@ -562,9 +562,7 @@ test('a field whose agents are all let go and whose traces have faded is idle: i
   assert.equal(field.idle, true);
   assert.ok(isClear(field), 'traffic and colors all 0');
   assert.equal(field.quanta, FADED_AFTER * QUANTA_A_BEAT);
-  const before = performance.now();
-  field.advanceTo(5000);
-  assert.ok(performance.now() - before < 500, 'a quantum of an idle field costs nothing');
+  field.advanceTo(5000); // as many idle quanta as the first test's field skips, within its one time budget
   assert.equal(field.quanta, 10000);
 });
 
