@@ -22,8 +22,23 @@ const OCTAVES = {
   valueAt: (position) => 20 * 1000 ** position,
 };
 const LINEAR = { positionOf: (value) => value, valueAt: (position) => position };
-const isSame = (one, other) => JSON.stringify(one) === JSON.stringify(other);
 const SEEDS = Array.from({ length: 400 }, (_, seed) => seed + 1);
+
+// a genome of three sections: what two kinds of plants share, the tap plant's own, a floor's no kind names
+const SCHEMA = {
+  shared: { size: rangedGene(LINEAR), petals: wholeGene(3, 9) },
+  tap: { slant: rangedGene(LINEAR), paints: choicesGene(['white', 'red', 'blue', 'black'], 2) },
+  floor: { weft: choiceGene(['over', 'under', 'bar']) },
+};
+const BASE = {
+  shared: { size: 0.5, petals: 5 },
+  tap: { slant: 0.5, paints: ['white', 'red'] },
+  floor: { weft: 'bar' },
+};
+
+function isSame(one, other) {
+  return JSON.stringify(one) === JSON.stringify(other);
+}
 
 test('a ranged gene on an octaves-like scale moves as far in position at the low end as at the high; at depth 1 it stays in its range', () => {
   const gene = rangedGene(OCTAVES);
@@ -57,23 +72,15 @@ test('a whole gene moves by 1, never past its bounds', () => {
   assert.equal(gene.mutate(4, 1, { next: () => 0.9, fork: () => assert.fail() }), 4, 'up from the highest stays');
 });
 
-test('a choice and a choices gene draw the same with their options given in another order; a choices gene never holds one option twice and keeps its count', () => {
-  const options = ['white', 'red', 'blue', 'yellow', 'black'];
-  const reordered = ['black', 'white', 'yellow', 'red', 'blue'];
+test('a pair swaps in an option as likely as its weight, 1 where none is given, whatever order the options are written in; it never holds one option twice and keeps its count', () => {
+  const colors = ['white', 'red', 'blue', 'yellow', 'black'];
+  const reorderedColors = ['black', 'white', 'yellow', 'red', 'blue'];
   for (const seed of SEEDS.slice(0, 100)) {
-    assert.equal(
-      choiceGene(options).mutate('red', 1, seededRandomness(seed)),
-      choiceGene(reordered).mutate('red', 1, seededRandomness(seed)),
-    );
-    const paints = choicesGene(options, 2);
-    const moved = paints.mutate(['white', 'red'], 1, seededRandomness(seed));
-    assert.deepEqual(moved, choicesGene(reordered, 2).mutate(['white', 'red'], 1, seededRandomness(seed)));
+    const moved = choicesGene(colors, 2).mutate(['white', 'red'], 1, seededRandomness(seed));
+    assert.deepEqual(moved, choicesGene(reorderedColors, 2).mutate(['white', 'red'], 1, seededRandomness(seed)));
     assert.equal(moved.length, 2);
     assert.equal(new Set(moved).size, 2, `${moved.join()} holds one twice`);
   }
-});
-
-test('a pair swaps in an option as likely as its weight, 1 where none is given, whatever order the options are written in', () => {
   const options = ['white', 'ochre', 'rust', 'blue'];
   const weighted = choicesGene(options, 2, { rust: 2 });
   const swappedIn = SEEDS.map((seed) => weighted.mutate(['white', 'ochre'], 1, seededRandomness(seed)))
@@ -89,7 +96,15 @@ test('a pair swaps in an option as likely as its weight, 1 where none is given, 
   );
 });
 
-test('a choice switches only to another option, with a chance of the depth', () => {
+test('a choice switches only to another option, with a chance of the depth, whatever order the options are written in', () => {
+  const options = ['white', 'red', 'blue', 'yellow', 'black'];
+  const reordered = ['black', 'white', 'yellow', 'red', 'blue'];
+  for (const seed of SEEDS.slice(0, 100)) {
+    assert.equal(
+      choiceGene(options).mutate('red', 1, seededRandomness(seed)),
+      choiceGene(reordered).mutate('red', 1, seededRandomness(seed)),
+    );
+  }
   const gene = choiceGene(['a', 'b', 'c']);
   const switched = SEEDS.filter((seed) => gene.mutate('a', 0.5, seededRandomness(seed)) !== 'a');
   assert.ok(switched.length > 150 && switched.length < 250, `${switched.length} of 400`);
@@ -97,19 +112,7 @@ test('a choice switches only to another option, with a chance of the depth', () 
   assert.equal(choiceGene(['only']).mutate('only', 1, seededRandomness(1)), 'only', 'no other to go to');
 });
 
-// a genome of three sections: what two kinds of plants share, the tap plant's own, a floor's no kind names
-const SCHEMA = {
-  shared: { size: rangedGene(LINEAR), petals: wholeGene(3, 9) },
-  tap: { slant: rangedGene(LINEAR), paints: choicesGene(['white', 'red', 'blue', 'black'], 2) },
-  floor: { weft: choiceGene(['over', 'under', 'bar']) },
-};
-const BASE = {
-  shared: { size: 0.5, petals: 5 },
-  tap: { slant: 0.5, paints: ['white', 'red'] },
-  floor: { weft: 'bar' },
-};
-
-test('mutate(): the same randomness, the same genome; a gene added to the schema leaves the others moves as they were; with sections, only those move', () => {
+test('mutate(): the same randomness, the same genome; a gene added to the schema leaves the others moves as they were; with sections, only those move; at depth 0, none', () => {
   assert.deepEqual(mutate(BASE, SCHEMA, 1, seededRandomness(7)), mutate(BASE, SCHEMA, 1, seededRandomness(7)));
   assert.notDeepEqual(mutate(BASE, SCHEMA, 1, seededRandomness(7)), BASE);
 
@@ -126,10 +129,12 @@ test('mutate(): the same randomness, the same genome; a gene added to the schema
   assert.deepEqual(onlyTap.floor, BASE.floor);
   assert.deepEqual(onlyTap.tap, before.tap, 'a section moves as it does with the others');
   assert.notDeepEqual(onlyTap.tap, BASE.tap);
-});
 
-test('mutate(): a gene leaves things as they were where its first draw is over the depth', () => {
-  assert.deepEqual(mutate(BASE, SCHEMA, 0, seededRandomness(3)), BASE);
+  assert.deepEqual(
+    mutate(BASE, SCHEMA, 0, seededRandomness(3)),
+    BASE,
+    'a gene whose first draw is over the depth stays',
+  );
 });
 
 test('individualGenome(): generation 1 the base, flat; the same id and generation, the same genome; only shared and its own kind moves', () => {

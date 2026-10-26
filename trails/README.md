@@ -44,6 +44,6 @@ A sensor past a tile's plane smells what the field beyond smells there: its trai
 |---|---|
 | [`trail-field.ts`](trail-field.ts) | `TrailField`: `food()`, `foodGone()`, `seed()` (a color and a count optional), `advanceTo()`, `quanta`, `traffic`, `tints`, `tintGrid`, `rules`, `arrive()`, `leavers`, `idle`, `asleep`, `smellAt()`; `TrailRules` (`sense`, `sensorAngle`, `turn`, `fade`, `perSeed`; optional `scent`, `scentReach`, `hearth`, `hearthReach`, `lifetime`, `scouts`, `scoutLifetime`, `tintReach`, `tintGuard`, `tintGuardReach`, `senseInHearth`, `turnBackWithin`, `starveAfter`, `trailPasses`, `tintPasses`, `tintGrid`, `edges`); `Tint`, `Tints`; up to 700 agents, the oldest let go first; the field 160 cells a side |
 | [`trail-tiles.ts`](trail-tiles.ts) | `TrailTiles`: fields on a grid of tiles stepped together, in tile units: `food()`, `foodGone()`, `seed()`, `advanceTo()` (with which tiles are awake), `rules`, `fields` (each with its `Tile`); an optional `wrapAcross`; agents that stepped past a plane handed to the field beyond |
-| [`traffic.ts`](traffic.ts) | `TRAFFIC_GRID`, where agents ran on a grid finer than the field's; an agent's step recorded as a smooth hairline, the traffic fading with the trail |
+| [`traffic.ts`](traffic.ts) | `TRAFFIC_GRID`; `Traffic`, where agents ran on a grid finer than the field's; an agent's step recorded as a smooth hairline, the traffic fading with the trail |
 
-Tested in node on a seeded `Randomness` (`test/trails.test.js`).
+Tested in node on a seeded `Randomness`, a file a part: `test/trail-field.test.js`, `test/trail-tiles.test.js`, `test/traffic.test.js`, their helpers in `test/trails.js`.

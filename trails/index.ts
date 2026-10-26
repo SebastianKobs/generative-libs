@@ -5,4 +5,4 @@
 // No drawing: ink, an image or a heat map made of the traffic is the caller's
 export { TrailField, type TrailRules, type Tint, type Tints } from './trail-field.ts';
 export { TrailTiles, type Tile, type TileField } from './trail-tiles.ts';
-export { TRAFFIC_GRID } from './traffic.ts';
+export { TRAFFIC_GRID, Traffic } from './traffic.ts';

@@ -17,8 +17,11 @@ const KONSTRUKT = {
 const SEEDS = Array.from({ length: 100 }, (_, seed) => seed + 1);
 
 // a production's parts: a bracketed branch or one character
-const partsOf = (production) => production.match(/\[[^\]]*\]|./g) ?? [];
-const isBalanced = (production) => {
+function partsOf(production) {
+  return production.match(/\[[^\]]*\]|./g) ?? [];
+}
+
+function isBalanced(production) {
   let depth = 0;
   for (const character of production) {
     if (character === '[') {
@@ -32,7 +35,7 @@ const isBalanced = (production) => {
     }
   }
   return depth === 0;
-};
+}
 
 test("rewrite() keeps a staying letter's id, names a grown one by its parent and place, with the generation it was born in", () => {
   const axiom = [letter('F', '0', 0), letter('B', '1', 0)];
