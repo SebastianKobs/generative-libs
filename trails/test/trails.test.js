@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { TRAFFIC_GRID, TrailField, TrailTiles } from '../index.ts';
 import { Traffic } from '../traffic.ts';
 import { seededRandomness } from '../../randomness/test/seeded-randomness.js';
+import { near, isNear } from '../../../base/util/test/near.js';
 
 const SEEDS = [1, 2, 3, 4, 5, 6];
 const RULES = { sense: 6, sensorAngle: 0.7, turn: 0.4, fade: 0.96, perSeed: 2 };
@@ -92,9 +93,9 @@ test('no agents before a seed: food alone leaves no traffic; after a seed, traff
   assert.equal(total(field.traffic), 0);
   field.seed(0.3, 0.6);
   field.advanceTo(10);
-  const near = massIn(field.traffic, { x0: 0.15, x1: 0.45, y0: 0.45, y1: 0.75 });
-  assert.ok(near > 0);
-  assert.ok(near > 0.9 * total(field.traffic), 'agents let loose there have stayed near it');
+  const massNear = massIn(field.traffic, { x0: 0.15, x1: 0.45, y0: 0.45, y1: 0.75 });
+  assert.ok(massNear > 0);
+  assert.ok(massNear > 0.9 * total(field.traffic), 'agents let loose there have stayed near it');
 });
 
 test('a seed lets perSeed agents loose, and changed rules count from the next quantum on', () => {
@@ -208,7 +209,7 @@ test('taking away a food never laid leaves the field as it was: a cell is never 
 });
 
 test('a stronger hearth draws more of the traffic to the food it was let loose beside', () => {
-  const near = around(AT_A, 0.04);
+  const boxNear = around(AT_A, 0.04);
   const mass = (hearth) =>
     massAfter(
       { ...SENSE, hearth, scent: 0 },
@@ -218,14 +219,14 @@ test('a stronger hearth draws more of the traffic to the food it was let loose b
           field.seed(AT_A.x + 0.04, AT_A.y);
         },
         beats: 20,
-        box: near,
+        box: boxNear,
       },
     );
   assert.ok(mass(8) > 1.5 * mass(0), `strong ${mass(8)}, none ${mass(0)}`);
 });
 
 test('a food whose hearth reaches farther draws agents let loose farther off', () => {
-  const near = around(AT_A, 0.04);
+  const boxNear = around(AT_A, 0.04);
   const mass = (hearthReach) =>
     massAfter(
       { ...SENSE, hearth: 8, hearthReach, scent: 0 },
@@ -235,7 +236,7 @@ test('a food whose hearth reaches farther draws agents let loose farther off', (
           field.seed(AT_A.x + 0.09, AT_A.y);
         },
         beats: 20,
-        box: near,
+        box: boxNear,
       },
     );
   assert.ok(mass(16) > 1.5 * mass(3), `wide ${mass(16)}, narrow ${mass(3)}`);
@@ -360,7 +361,7 @@ test('a seed with a color lays it with its trail, and a seed without lays none',
   assert.ok(laid.length > 0);
   for (const cell of laid) {
     const colorOfCell = [sumRed[cell], sumGreen[cell], sumBlue[cell]].map((sum) => sum / weight[cell]);
-    colorOfCell.forEach((channel, index) => assert.ok(Math.abs(channel - red[index]) < 1e-3, `cell ${cell}`));
+    colorOfCell.forEach((channel, index) => near(channel, red[index], `cell ${cell}`, 1e-3));
   }
   assert.equal(
     plain.tints.weight.every((value) => value === 0),
@@ -377,9 +378,9 @@ test("an agent's color counts less the farther it is from where it was let loose
     return { weight: field.tints.weight.reduce((sum, value) => sum + value, 0), traffic: field.traffic };
   };
   const everywhere = laidWeight(undefined);
-  const near = laidWeight(4);
-  assert.ok(near.weight < 0.5 * everywhere.weight, `near ${near.weight}, everywhere ${everywhere.weight}`);
-  assert.ok(sameTraffic(near.traffic, everywhere.traffic), 'the reach changes no trail');
+  const laidNear = laidWeight(4);
+  assert.ok(laidNear.weight < 0.5 * everywhere.weight, `near ${laidNear.weight}, everywhere ${everywhere.weight}`);
+  assert.ok(sameTraffic(laidNear.traffic, everywhere.traffic), 'the reach changes no trail');
 });
 
 test("a seed's own agents count overrides perSeed, even to none", () => {
@@ -415,7 +416,7 @@ test("with edges 'pass' an agent stepping past the plane is let go and kept with
     assert.ok(leaver.x > -0.05 && leaver.x < 1.05 && leaver.y > -0.05 && leaver.y < 1.05, 'one step past');
     assert.deepEqual(leaver.tint, RED.map(Math.fround)); // kept as the field keeps it, in 32 bits
     assert.equal(leaver.scout, false);
-    assert.ok(Math.abs(leaver.homeX - 0.999) < 0.02 && Math.abs(leaver.homeY - 0.5) < 0.02, 'its home kept');
+    assert.ok(isNear(leaver.homeX, 0.999, 0.02) && isNear(leaver.homeY, 0.5, 0.02), 'its home kept');
     assert.ok(Number.isFinite(leaver.heading) && leaver.age >= 0);
   }
   field.clearLeavers();
@@ -451,7 +452,7 @@ test('an agent crossing a seam lands in the field beyond with its color, and the
   assert.ok(laid.length > 0, 'the color came across');
   for (const cell of laid) {
     const { red, green, blue, weight } = beyond.tints;
-    [red, green, blue].forEach((sums, index) => assert.ok(Math.abs(sums[cell] / weight[cell] - RED[index]) < 1e-3));
+    [red, green, blue].forEach((sums, index) => near(sums[cell] / weight[cell], RED[index], '', 1e-3));
   }
 });
 
@@ -471,8 +472,8 @@ test("a color's home is kept across a seam: its weight falls with the distance f
     return most;
   };
   const everywhere = maxWeightBeyond(undefined);
-  const near = maxWeightBeyond(5);
-  assert.ok(near < 0.25 * everywhere, `reach 5: ${near}, everywhere: ${everywhere}`);
+  const weightNear = maxWeightBeyond(5);
+  assert.ok(weightNear < 0.25 * everywhere, `reach 5: ${weightNear}, everywhere: ${everywhere}`);
 });
 
 test('a scout keeps its flag and its home across a seam: it smells its own plant beyond as nothing, and lays no trail there', () => {
@@ -732,7 +733,7 @@ test('an idle field is woken by a seed, a food or an arriving agent, and runs ag
 test('the food laid stays through an idle stretch: a seed after it still finds its hearth', () => {
   const rules = { ...LET_GO, hearth: 3, hearthReach: 10 };
   const mass = (idleFirst) => {
-    let near = 0;
+    let massNear = 0;
     for (const seed of SEEDS) {
       const field = fieldOf(seed, rules);
       field.food(AT_A.x, AT_A.y);
@@ -740,9 +741,9 @@ test('the food laid stays through an idle stretch: a seed after it still finds i
       field.advanceTo(idleFirst ? FADED_AFTER : 1);
       field.seed(AT_A.x, AT_A.y);
       field.advanceTo((idleFirst ? FADED_AFTER : 1) + 3);
-      near += massIn(field.traffic, around(AT_A, 0.15));
+      massNear += massIn(field.traffic, around(AT_A, 0.15));
     }
-    return near;
+    return massNear;
   };
   assert.ok(mass(true) > 0.5 * mass(false), `after idle ${mass(true)}, without ${mass(false)}`);
 });
@@ -885,10 +886,7 @@ test('a sensor past the plane smells what the field beyond smells there, in that
   arrive(scout, true);
   scout.advanceTo(0.5);
   const scoutPast = asked.find(({ across }) => across === 1);
-  assert.ok(
-    Math.abs(scoutPast.home.x - (0.9 * 160 - 160)) < 1e-3,
-    `its home in the neighbour's cells: ${scoutPast.home.x}`,
-  );
+  near(scoutPast.home.x, 0.9 * 160 - 160, `its home in the neighbour's cells: ${scoutPast.home.x}`, 1e-3);
 });
 
 test('what the field beyond smells is its trail and food; a scout leaves out its own home', () => {
@@ -972,19 +970,13 @@ test('a line across the plane leaves as much traffic in the edge cells as in the
   const across = lineAcross.values;
   const middle = columnOf(across, TRAFFIC_GRID / 2);
   for (const edge of [0, TRAFFIC_GRID - 1]) {
-    assert.ok(
-      Math.abs(columnOf(across, edge) - middle) < 0.05 * middle,
-      `column ${edge}: ${columnOf(across, edge)} against ${middle}`,
-    );
+    near(columnOf(across, edge), middle, `column ${edge}: ${columnOf(across, edge)} against ${middle}`, 0.05 * middle);
   }
   const lineDown = new Traffic(grid);
   lineDown.record({ x: grid / 2 + 0.3, y: 0 }, { x: grid / 2 + 0.3, y: grid });
   const down = lineDown.values;
   for (const edge of [0, TRAFFIC_GRID - 1]) {
-    assert.ok(
-      Math.abs(rowOf(down, edge) - middle) < 0.05 * middle,
-      `row ${edge}: ${rowOf(down, edge)} against ${middle}`,
-    );
+    near(rowOf(down, edge), middle, `row ${edge}: ${rowOf(down, edge)} against ${middle}`, 0.05 * middle);
   }
 });
 
@@ -1042,10 +1034,10 @@ test('the traffic faded as one gain reads as if every cell were faded: each cell
   }
   let strongest = 0;
   traffic.values.forEach((value, cell) => {
-    assert.ok(Math.abs(value - reference[cell]) < 1e-6, `cell ${cell}: ${value} against ${reference[cell]}`);
+    near(value, reference[cell], `cell ${cell}: ${value} against ${reference[cell]}`, 1e-6);
     strongest = Math.max(strongest, value);
   });
-  assert.ok(Math.abs(traffic.strongest - strongest) < 1e-7, `${traffic.strongest} against ${strongest}`);
+  near(traffic.strongest, strongest, `${traffic.strongest} against ${strongest}`, 1e-7);
 });
 
 test('the traffic faded for long stays right: the gain is brought back to 1 now and then, and the cells with it', () => {
@@ -1058,7 +1050,7 @@ test('the traffic faded for long stays right: the gain is brought back to 1 now 
     strongest = Math.max(strongest, value);
   });
   assert.ok(strongest > 0.05 && strongest < 1, `the last steps still there: ${strongest}`);
-  assert.ok(Math.abs(traffic.strongest - strongest) < 1e-7);
+  near(traffic.strongest, strongest, '', 1e-7);
 });
 
 test('reading the traffic changes nothing that comes after: the same traffic read every quantum or never', () => {
@@ -1169,8 +1161,8 @@ function weightAndSpread(weight) {
 test('the colors diffused once a quantum weigh about as much and spread about as far as diffused at every step', () => {
   const once = weightAndSpread(colorsOf(1));
   const everyStep = weightAndSpread(colorsOf(4));
-  assert.ok(Math.abs(once.mass / everyStep.mass - 1) < 0.1, `weight ${once.mass} against ${everyStep.mass}`);
-  assert.ok(Math.abs(once.spread / everyStep.spread - 1) < 0.1, `spread ${once.spread} against ${everyStep.spread}`);
+  near(once.mass / everyStep.mass, 1, `weight ${once.mass} against ${everyStep.mass}`, 0.1);
+  near(once.spread / everyStep.spread, 1, `spread ${once.spread} against ${everyStep.spread}`, 0.1);
 });
 
 test('the passes not said are one a step, as before: the same colors as four passes said', () => {
@@ -1201,8 +1193,8 @@ test("the colors on a coarser grid weigh as much and spread as far as on the fie
       const { mass, spread } = weightAndSpread(colorsOf(tintPasses, tintGrid));
       const before = onTheFieldsGrid[tintPasses];
       const which = `grid ${tintGrid}, passes ${tintPasses}`;
-      assert.ok(Math.abs(mass / before.mass - 1) < 0.1, `${which}: weight ${mass} against ${before.mass}`);
-      assert.ok(Math.abs(spread / before.spread - 1) < 0.1, `${which}: spread ${spread} against ${before.spread}`);
+      near(mass / before.mass, 1, `${which}: weight ${mass} against ${before.mass}`, 0.1);
+      near(spread / before.spread, 1, `${which}: spread ${spread} against ${before.spread}`, 0.1);
     }
   }
 });
@@ -1220,7 +1212,7 @@ test("the colors blur as far a quantum on any grid as on the field's: a variance
       const added = late ** 2 - early ** 2;
       const expected = 20 * 4 * 4 * 0.015; // quanta × steps × 4 neighbours × each one's share
       const which = `grid ${tintGrid}, passes ${tintPasses}`;
-      assert.ok(Math.abs(added / expected - 1) < 0.1, `${which}: ${added} cells² added, ${expected} expected`);
+      near(added / expected, 1, `${which}: ${added} cells² added, ${expected} expected`, 0.1);
     }
   }
 });
@@ -1237,8 +1229,8 @@ test('the colors carried onto a new grid as the rules change it: the same weight
   assert.equal(field.tints.weight.length, 80 * 80);
   // each new cell takes the old one under its middle, not their average: a few percent off where the threads are fine
   const after = weightAndSpread(field.tints.weight);
-  assert.ok(Math.abs(after.mass / before.mass - 1) < 0.05, `weight ${after.mass} against ${before.mass}`);
-  assert.ok(Math.abs(after.spread / before.spread - 1) < 0.05, `spread ${after.spread} against ${before.spread}`);
+  near(after.mass / before.mass, 1, `weight ${after.mass} against ${before.mass}`, 0.05);
+  near(after.spread / before.spread, 1, `spread ${after.spread} against ${before.spread}`, 0.05);
   field.advanceTo(8);
   assert.ok(weightAndSpread(field.tints.weight).mass > 0, 'running on, on the new grid');
 });

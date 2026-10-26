@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Flock } from '../index.ts';
 import { seededRandomness } from '../../randomness/test/seeded-randomness.js';
+import { near } from '../../../base/util/test/near.js';
 
 const SEEDS = Array.from({ length: 20 }, (_, seed) => seed + 1);
 const TAU = Math.PI * 2;
@@ -46,7 +47,7 @@ test('coupled, the phases agree more over time; uncoupled and of one pace, they 
     coupled.advanceTo(60);
     alone.advanceTo(60);
     assert.ok(orderOf(coupled.phases) > before + 0.2, `seed ${seed}: ${before} to ${orderOf(coupled.phases)}`);
-    assert.ok(Math.abs(orderOf(alone.phases) - before) < 1e-9, `seed ${seed}`);
+    near(orderOf(alone.phases), before, `seed ${seed}`, 1e-9);
   }
 });
 

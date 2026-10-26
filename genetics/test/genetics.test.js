@@ -14,6 +14,7 @@ import {
   wholeGene,
 } from '../index.ts';
 import { seededRandomness } from '../../randomness/test/seeded-randomness.js';
+import { near, isNear } from '../../../base/util/test/near.js';
 
 // a scale like an octave knob: equal steps in position are equal ratios in value, 20 to 20000
 const OCTAVES = {
@@ -35,7 +36,7 @@ test('a ranged gene on an octaves-like scale moves as far in position at the low
   const high = movedFrom(0.8);
   const mean = (moves) => moves.reduce((sum, move) => sum + move, 0) / moves.length;
   assert.ok(Math.max(...low, ...high) <= depth / 3 + 1e-9, 'the largest move a third of the travel at depth 1');
-  assert.ok(Math.abs(mean(low) - mean(high)) < 0.01, `${mean(low)} against ${mean(high)}`);
+  near(mean(low), mean(high), `${mean(low)} against ${mean(high)}`, 0.01);
   for (const seed of SEEDS.slice(0, 100)) {
     for (const start of [20, 20000]) {
       const value = gene.mutate(start, 1, seededRandomness(seed));
@@ -173,15 +174,15 @@ test('cross(): each gene a parent, or a ranged one between them; a choices gene 
     assert.equal(new Set(child.tap.paints).size, 2, `${child.tap.paints.join()} holds one twice`);
     assert.ok(['over', 'under', 'bar'].includes(child.floor.weft));
   }
-  const near = (target) => sizes.filter((size) => Math.abs(size - target) < slack).length;
-  assert.ok(near(0.5) > 20, 'about half the time the parents average');
-  assert.ok(near(0.2) + near(0.8) > 20, 'else one parent or the other');
+  const countNear = (target) => sizes.filter((size) => isNear(size, target, slack)).length;
+  assert.ok(countNear(0.5) > 20, 'about half the time the parents average');
+  assert.ok(countNear(0.2) + countNear(0.8) > 20, 'else one parent or the other');
   assert.deepEqual(
     cross(first, second, SCHEMA, seededRandomness(5)),
     cross(first, second, SCHEMA, seededRandomness(5)),
   );
   const crossed = cross(first, first, { shared: { size: rangedGene(LINEAR) } }, seededRandomness(5));
-  assert.ok(Math.abs(crossed.shared.size - 0.2) <= slack, 'two of one parent stay near it');
+  near(crossed.shared.size, 0.2, 'two of one parent stay near it', slack);
 });
 
 test('flatGenome(): every section in one object', () => {
@@ -242,7 +243,7 @@ test('Lineage: a section alone at the depth scaled up by the square root of how 
   assert.deepEqual(lineage.current.shared, { a: 0, b: 0, c: 0 }, 'the other section left as it was');
   assert.ok(depths.length > 0);
   for (const depth of depths) {
-    assert.ok(Math.abs(depth - 0.6) < 1e-9, `${depth}`);
+    near(depth, 0.6, `${depth}`, 1e-9);
   }
   depths.length = 0;
   lineage.mutate(0.8, seededRandomness(1), 'tap');

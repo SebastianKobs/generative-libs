@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { USUAL_SPEED, articulate, carryOf, strokeOf, sweep } from '../index.ts';
 import { seededRandomness } from '../../randomness/test/seeded-randomness.js';
+import { near } from '../../../base/util/test/near.js';
 
 const SEEDS = Array.from({ length: 60 }, (_, seed) => seed + 1);
 const LINE_KINDS = new Set(['line', 'break']);
@@ -43,12 +44,12 @@ const alongOfSamples = (stroke, keep) => stroke.filter(keep).map(along);
 test('strokeOf() takes four samples a stretch, along from 0 to 1 by index; a straight path at the usual pace has speed 1', () => {
   const stroke = strokeOf(usualPath(3));
   assert.equal(stroke.length, 3 * 4 + 1);
-  stroke.slice(0, -1).forEach((sample, index) => assert.ok(Math.abs(sample.along - index / 12) < 1e-12, `${index}`));
+  stroke.slice(0, -1).forEach((sample, index) => near(sample.along, index / 12, `${index}`, 1e-12));
   assert.equal(stroke.at(-1).along, 1);
   assert.equal(stroke[0].beat, 0);
-  assert.ok(Math.abs(stroke[1].beat - 1) < 1e-12);
+  near(stroke[1].beat, 1, '', 1e-12);
   for (const sample of stroke) {
-    assert.ok(Math.abs(sample.speed - 1) < 1e-9, `${sample.speed}`);
+    near(sample.speed, 1, `${sample.speed}`, 1e-9);
     assert.ok(Math.abs(sample.y) < 1e-12);
   }
   assert.deepEqual(strokeOf([{ x: 0.2, y: 0.3, beat: 5 }]).map(along), [0]);
@@ -89,11 +90,11 @@ test('the load: intensity falls from 1 to 0.35 where it runs out; more load runs
   for (let index = 1; index < lines.length; index++) {
     assert.ok(lines[index].intensity <= lines[index - 1].intensity, `${index}`);
   }
-  assert.ok(Math.abs(lines.at(-1).intensity - 0.35) < 0.02, `${lines.at(-1).intensity}`);
-  assert.ok(Math.abs(lastLineAlong(marks) - 0.85) < 0.02, `${lastLineAlong(marks)}`);
+  near(lines.at(-1).intensity, 0.35, `${lines.at(-1).intensity}`, 0.02);
+  near(lastLineAlong(marks), 0.85, `${lastLineAlong(marks)}`, 0.02);
   for (const load of [0, 0.5, 1]) {
     const run = articulate(stroke, handOf('pour', { load }), seededRandomness(1));
-    assert.ok(Math.abs(lastLineAlong(run) - Math.min(1, 0.55 + 0.6 * load)) < 0.02, `load ${load}`);
+    near(lastLineAlong(run), Math.min(1, 0.55 + 0.6 * load), `load ${load}`, 0.02);
   }
 });
 
@@ -199,8 +200,8 @@ test('sweep() makes the lines thin as they go and the flick only once the whole 
   assert.equal(marks.at(-1).along, 1);
   assert.equal(marks.at(-1).manner, 'fling');
   lines.forEach((line, index) => {
-    assert.ok(Math.abs(line.from.along - index / 14) < 1e-12);
-    assert.ok(Math.abs(line.along - (index + 1) / 14) < 1e-12);
+    near(line.from.along, index / 14, '', 1e-12);
+    near(line.along, (index + 1) / 14, '', 1e-12);
     if (index === 0) {
       return;
     }
@@ -221,7 +222,7 @@ test("carryOf() grows with the hand's speed and its reach, the same for the same
   for (const seed of SEEDS) {
     assert.ok(carryOf(quick, seededRandomness(seed)) > carryOf(slow, seededRandomness(seed)), `seed ${seed}`);
     const far = carryOf({ ...quick, reach: 2 }, seededRandomness(seed));
-    assert.ok(Math.abs(far - 2 * carryOf(quick, seededRandomness(seed))) < 1e-12, `reach, seed ${seed}`);
+    near(far, 2 * carryOf(quick, seededRandomness(seed)), `reach, seed ${seed}`, 1e-12);
   }
   const used = seededRandomness(9);
   used.next();
