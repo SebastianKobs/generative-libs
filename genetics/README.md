@@ -1,6 +1,6 @@
 # generative/genetics
 
-An individual's values varied a little at a time, after Absynth's Mutator: what's repeated is mutated by a depth, every step kept in a lineage you can step back through. No fitness, no death. Seeded, so the same repeat gives the same result.
+An individual's values varied a little at a time, after Absynth's Mutator: what's repeated is mutated by a depth, every step kept in a lineage you can step back through. No fitness, no death. Seeded, so the same repeat gives the same result. Two genomes can be crossed.
 
 Depends on: `generative/randomness`.
 

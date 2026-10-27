@@ -1,6 +1,6 @@
 # generative/sync
 
-Coupled oscillators falling slowly into step (a Kuramoto model: each phase pulled a little toward the others'), a note pulling them to flash: the more a source is played, the more they agree. No drawing: what a phase becomes, a light, a pulse or a voice, is the caller's.
+Coupled oscillators falling slowly into step (a Kuramoto model: each phase pulled a little toward the others'), a note pulling them to flash: the more a source is played, the more they agree. No drawing: what a phase becomes, a light, a pulse or a voice, is the caller's. Run forward in time, with no past kept.
 
 Depends on: `generative/randomness`.
 
