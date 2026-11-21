@@ -3,8 +3,8 @@
 // each library is read alone, its files named by their paths from the root.
 import { join } from 'node:path';
 
-// the libraries, each a folder at the root (README.md); the import rules' layout (test/module-rules.js) holds every one
-export const LIBRARY_FOLDERS = Object.freeze([
+// the folders holding code, each a library at the root (README.md); the import rules' layout (test/module-rules.js) holds every one
+export const CODE_FOLDERS = Object.freeze([
   'articulation',
   'automata',
   'genetics',
@@ -14,11 +14,9 @@ export const LIBRARY_FOLDERS = Object.freeze([
   'trails',
 ]);
 
-// the files the reader finds in each library, by path from the root → text; the reader is sourcesIn() or testsIn()
-export function inLibraries(read, root) {
+// the files the reader finds in each folder, by path from the root → text; the reader is sourcesIn() or testsIn()
+export function inCodeFolders(read, root) {
   return new Map(
-    LIBRARY_FOLDERS.flatMap((library) =>
-      [...read(join(root, library))].map(([path, text]) => [`${library}/${path}`, text]),
-    ),
+    CODE_FOLDERS.flatMap((folder) => [...read(join(root, folder))].map(([path, text]) => [`${folder}/${path}`, text])),
   );
 }

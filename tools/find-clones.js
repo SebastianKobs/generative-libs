@@ -6,11 +6,11 @@ import { fileURLToPath } from 'node:url';
 import { cloneProblems, clonesIn } from 'ts-code-checks/tools/clones.js';
 import { sourcesIn } from 'ts-code-checks/tools/module-rules.js';
 import { KNOWN_CLONES } from './known-clones.js';
-import { inLibraries } from '../test/libraries.js';
+import { inCodeFolders } from '../test/libraries.js';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 
-const problems = cloneProblems(clonesIn(inLibraries(sourcesIn, ROOT)), KNOWN_CLONES);
+const problems = cloneProblems(clonesIn(inCodeFolders(sourcesIn, ROOT)), KNOWN_CLONES);
 for (const problem of problems) {
   console.log(problem);
 }
