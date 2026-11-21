@@ -7,7 +7,7 @@ Depends on: `randomness`.
 ```ts
 import { TRAFFIC_GRID, TrailField, TrailTiles } from './index.ts';
 const rules = { sense: 6, sensorAngle: 0.7, turn: 0.4, fade: 0.96, perSeed: 2 };
-const field = new TrailField(rules, randomness.fork('mould')); // the agents' draws come from it
+const field = new TrailField(rules, randomness.fork('mold')); // the agents' draws come from it
 field.advanceTo(4);
 field.food(0.3, 0.6); // a plant born at (0.3, 0.6) on the plane 0 to 1; runs in the next quantum
 field.seed(0.3, 0.6); // a note played there: perSeed agents let loose
@@ -18,7 +18,7 @@ field.traffic; // where agents ran, TRAFFIC_GRID cells a side, row by row, read-
 field.quanta; // the quanta reached: 20 here
 
 // fields on a grid of tiles, so threads cross the seams between them
-const tiles = new TrailTiles({ ...rules, edges: 'pass' }, randomness.fork('mould'), 4); // a world of 4 × 4 tiles that wraps round
+const tiles = new TrailTiles({ ...rules, edges: 'pass' }, randomness.fork('mold'), 4); // a world of 4 × 4 tiles that wraps round
 tiles.food(1.25, 0.5); // places in tile units: a quarter into tile 1, halfway down tile 0
 tiles.advanceTo(10);
 tiles.advanceTo(12, (tile) => tile.across < 2); // only these tiles awake; the rest sleep until a call names them

@@ -84,7 +84,7 @@ const STARVING = { ...SENSE, hearth: 6, hearthReach: 6, starveAfter: 4 };
 const COARSER_GRIDS = [80, 120];
 const TINT_GRIDS = [...COARSER_GRIDS, TrailField.grid];
 
-// Glow's mould: its genes and lifetimes, under which threads ring a quiet food rather than run into it
+// Glow's mold: its genes and lifetimes, under which threads ring a quiet food rather than run into it
 const GLOWING = {
   sense: 7,
   sensorAngle: 0.6,

@@ -1,9 +1,9 @@
-// ---------- trails/trail-field: a slime mould's agents on a field ----------
+// ---------- trails/trail-field: a slime mold's agents on a field ----------
 
 import type { Randomness } from '../randomness/index.ts';
 import { Traffic } from './traffic.ts';
 
-// What the mould does, changeable as it runs
+// What the mold does, changeable as it runs
 //   sense: how far ahead an agent smells, in the field's cells (tuned on a grid 112 cells a side)
 //   sensorAngle: how wide it looks, in radians either side of its heading
 //   turn: how hard it turns towards the stronger side, in radians
@@ -147,7 +147,7 @@ const TINT_GUARD_REACH = 10; // cells to which a color's guard falls to 1/e, if 
 const SCOUT_SCENT = 0.01; // what a scout must smell of another food where it steps to lay its trail there
 const FADED = 1e-4; // a trace this weak is gone: a traffic pass is 0.22, and a byte of it rounds to 0
 
-// A slime mould (Physarum, after Jeff Jones's 2010 model): agents sense the trail ahead, left and
+// A slime mold (Physarum, after Jeff Jones's 2010 model): agents sense the trail ahead, left and
 // right, turn towards the strongest, step and deposit; the trail diffuses a little and fades slowly.
 // Food, a hearth and a wide, faint scent, draws them; each seed lets a few more loose. The threads
 // that grow link the foods.

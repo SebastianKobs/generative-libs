@@ -1,4 +1,4 @@
-// ---------- trails: a slime mould's agents on a field, food drawing them, seeds letting more loose ----------
+// ---------- trails: a slime mold's agents on a field, food drawing them, seeds letting more loose ----------
 // Its parts: a field run forward in half-beat quanta, no copy of its past kept (trail-field.ts); fields on a grid of
 // tiles handing agents over at the seams (trail-tiles.ts); where agents ran, on a grid finer than the field
 // (traffic.ts). Uses only randomness/.
