@@ -1,4 +1,4 @@
-# generative/randomness
+# randomness
 
 Where a generative rule's draws come from, as an interface only: the rules import no generator and depend on nothing. Whoever uses a rule hands in a seeded one, the app its own seeded draws, a test `test/seeded-randomness.js`.
 

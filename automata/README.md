@@ -1,8 +1,8 @@
-# generative/automata
+# automata
 
 A one-row automaton (Wolfram's elementary rules): a row of 0s and 1s, the next row by a rule number 0 to 255, and the rule as a gene, mutated by a bit. No drawing: what a row means, a weft or a bar of 16 steps, is the caller's.
 
-Depends on: `generative/randomness`.
+Depends on: `randomness`.
 
 The gene it hands back fits genetics' `Gene` by its shape, so a project takes automata without genetics.
 

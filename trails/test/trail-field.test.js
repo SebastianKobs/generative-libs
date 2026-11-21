@@ -1,10 +1,10 @@
-// generative/trails/trail-field.ts: one field of a slime mold's agents on a plane, food drawing them,
+// trails/trail-field.ts: one field of a slime mold's agents on a plane, food drawing them,
 // seeds letting more loose; its traffic and the colors they lay, run forward in quanta
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { TRAFFIC_GRID, TrailField } from '../index.ts';
 import { seededRandomness } from '../../randomness/test/seeded-randomness.js';
-import { near, isNear } from '../../../base/util/test/near.js';
+import { near, isNear } from '../../randomness/test/near.js';
 import {
   FADED_AFTER,
   MANY,

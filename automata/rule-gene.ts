@@ -1,4 +1,4 @@
-// ---------- generative/automata/rule-gene: a rule number as a gene, one bit flipped ----------
+// ---------- automata/rule-gene: a rule number as a gene, one bit flipped ----------
 
 import type { Randomness } from '../randomness/index.ts';
 

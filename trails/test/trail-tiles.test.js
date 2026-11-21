@@ -1,8 +1,8 @@
-// generative/trails/trail-tiles.ts: fields on a grid of tiles stepped together, handing agents over at the seams,
+// trails/trail-tiles.ts: fields on a grid of tiles stepped together, handing agents over at the seams,
 // a far field left asleep
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { near } from '../../../base/util/test/near.js';
+import { near } from '../../randomness/test/near.js';
 import {
   FADED_AFTER,
   PASSING,

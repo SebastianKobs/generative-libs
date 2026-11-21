@@ -1,4 +1,4 @@
-// ---------- generative/genetics/genome: values in sections, mutated, crossed, an individual's own ----------
+// ---------- genetics/genome: values in sections, mutated, crossed, an individual's own ----------
 
 import type { Randomness } from '../randomness/index.ts';
 import type { Gene, GeneValue } from './gene.ts';

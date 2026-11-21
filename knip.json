@@ -1,0 +1,20 @@
+// Knip: unused files, dependencies and exports. Its plugins find the entries: the node tests.
+// Run in the unit run (make test-unit)
+// In production mode (make knip-production) only the entries marked ! count, in the unit run too: an export only the tests or the tools use is named
+{
+  "$schema": "./node_modules/knip/schema.json",
+  "entry": [
+    // production: each library's entry, its exports its API, used by another library or not
+    "**/index.ts!",
+    // not production: each tool, run from the command line or the Makefile; the unit tests, which the Makefile runs (make test-unit)
+    "tools/*.js",
+    "test/unit/*.test.js",
+    "*/test/*.test.js"
+  ],
+  // the files production mode looks at: all but the tests' and the tools'
+  "project": ["**/*.{js,mjs,cjs,jsx,ts,tsx,mts,cts}!", "!test/**!", "!**/test/**!", "!tools/**!"],
+  // the Makefile's, which Knip doesn't read: the linter, its type-aware rules, the formatter
+  "ignoreDependencies": ["oxlint", "oxlint-tsgolint", "prettier"],
+  // a type exported beside the function whose signature names it is the face's
+  "ignoreExportsUsedInFile": { "interface": true, "type": true }
+}

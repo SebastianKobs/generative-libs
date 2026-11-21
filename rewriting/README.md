@@ -1,8 +1,8 @@
-# generative/rewriting
+# rewriting
 
 An L-system's string (Lindenmayer's) rewritten by a production rule, one rewrite a generation, every letter keeping an id so what grew from what can be followed. A production is a gene, mutated a little at a time within its limits. No turtle: drawing the letters is the caller's job.
 
-Depends on: `generative/randomness`.
+Depends on: `randomness`.
 
 The gene it hands back fits genetics' `Gene` by its shape, so a project takes rewriting without genetics.
 

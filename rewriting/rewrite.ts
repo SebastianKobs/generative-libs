@@ -1,4 +1,4 @@
-// ---------- generative/rewriting/rewrite: an L-system's string rewritten, a generation at a time ----------
+// ---------- rewriting/rewrite: an L-system's string rewritten, a generation at a time ----------
 
 import { letter, type Letter } from './letter.ts';
 

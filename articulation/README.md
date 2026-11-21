@@ -1,8 +1,8 @@
-# generative/articulation
+# articulation
 
 What a hand's gesture makes along a stroke, with no medium in it. A stroke (points with times) and the hand's qualities go in; marks come out, each with its place along the stroke, its time, its kind and its intensity. A drawing takes the marks as paint, a score as notes: a line a legato run, a break a rest, a bead a staccato note, intensity the dynamics.
 
-Depends on: `generative/randomness`.
+Depends on: `randomness`.
 
 ```ts
 import { articulate, carryOf, strokeOf, sweep, type Hand } from './index.ts';

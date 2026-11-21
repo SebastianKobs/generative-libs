@@ -1,4 +1,4 @@
-// ---------- generative/genetics/gene: one value of a genome and how it moves: ranged, whole, a choice, a pair ----------
+// ---------- genetics/gene: one value of a genome and how it moves: ranged, whole, a choice, a pair ----------
 
 import type { Randomness } from '../randomness/index.ts';
 

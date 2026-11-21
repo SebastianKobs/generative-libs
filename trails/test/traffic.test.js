@@ -1,8 +1,8 @@
-// generative/trails/traffic.ts: where agents ran, on a grid finer than the field's, the traffic fading as one gain
+// trails/traffic.ts: where agents ran, on a grid finer than the field's, the traffic fading as one gain
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { TRAFFIC_GRID, Traffic, TrailField } from '../index.ts';
-import { near } from '../../../base/util/test/near.js';
+import { near } from '../../randomness/test/near.js';
 import { STEPS, sameTraffic, total } from './trails.js';
 
 // a line's traffic in one column, or one row, of the traffic grid

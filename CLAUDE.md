@@ -1,0 +1,28 @@
+# generative-libs
+
+**What this is.** Generative rules in TypeScript, free of any medium, each usable alone: where a draw comes from, genes mutated and crossed, an L-system rewritten, a one-row automaton, a stroke's marks, coupled oscillators falling into step, a slime mold's trails. They grew inside Stim Garden's `libs` folder and then in audio-libs, their history carried over; a project mounts this repo as a git submodule or copies the libraries it needs. `README.md` lists them.
+
+**First steps.** `npm install`, then `make test-unit` runs the type check, the format check, the linter, Knip, the class members check and the clone finder, then the unit tests. The checks that know nothing of this project come from `ts-code-checks`, an optional dependency (`package.json`): without it they say they're skipped and the unit tests run uncapped.
+
+## Rules for the code
+
+- **Test-driven.** A change in behavior starts with a test that fails for the reason it names; the library's tests are in its own `test/` folder, those across libraries in `test/unit/`, their shared helpers beside the seeded draws, in `randomness/test/`.
+- **A library is a folder, its face its entry.** Its entry is `index.ts`. Another library is reached only through its entry, and a library imports only those its row names in `test/module-rules.js`, the one place the import order is kept. What a library exports from its entry, and every public member of a class it exports there, is its API, kept though nothing here uses it. Anything else is exported only where another file uses it, a test aside, and a class member is public only where something outside its class uses it. A test reaches a library through its entry or a helper in a `test/` folder.
+- **Each library reads `randomness/` alone, not each other,** so a project takes one rule without the rest. A shape two libraries share is matched by its type, as the genes of `rewriting/` and `automata/` fit genetics' `Gene`.
+- **Each file has one job, and every piece of state one owner.** A file is named for what it holds: its one class or type, by its name or its ending, its folder's name counting as part of its own, never repeated in it; a file of helpers, for their topic; never `shared`, `common`, `misc`, `utils` or `helpers`.
+- **Reuse first, special cases kept to the minimum.** Before writing code, look for something built that does the job already: use it or make it generic. The clone finder fails on a new clone over 60 tokens; the known ones are listed in `tools/known-clones.js`, a list that only shrinks.
+- **No file keeps state or acts as it loads, outside a class.** No top-level `let`, no instance made, no statement run as it loads; a lookup made once and typed read-only passes.
+- **Free of any medium:** no Web Audio, no DOM, no three.js, no drawing; what a result becomes, a line, a note or a light, is the caller's. The import test checks the Web Audio and three.js part.
+- **Nothing here owns time or chance:** a rule runs forward when its caller advances it, and its draws come from a `Randomness` handed in, so the same seed gives the same result.
+- **One order inside every file:** imports, types, constants, state, functions and classes, what runs as it loads; each helper below its first caller; every top-level function a `function` declaration.
+- **Readable, not terse:** names from the domain, no single letters but `x` and `y` (a point on the plane) in short scopes; if/else and early returns over ternaries, a ternary only to pick between two short values, never chained or nested. No top-level name under 3 characters.
+- **Comments say why,** in short plain sentences, one idea a line, under about 90 characters.
+- **American spelling in prose, code and names.**
+- **The docs say what is true now, and a test checks them** (`test/unit/docs-rules.test.js`, `ts-code-checks`' docs rules, skipped without it). Every path in backticks exists, written from this repo's root (`genetics/`, never from a project that mounts it) or beside its doc, and no doc points at another project's files: its fact is written into the README or the pointer dropped. A library's README: `# <its path>`; one paragraph on what it is, for a user outside this project; `Depends on:` one line, every library its row in `test/module-rules.js` names, or "nothing"; one `ts` example importing from `./index.ts`; `How it works` only where order matters, numbered; the face as one table `| Export | What it does |`, a row an export or a tight family, a function `name()`, a type or class bare, a method inside its class's row, the file in parentheses, nothing unexported named as face; `Tests:` one line naming each `test/*.test.js`, or why there are none. Written in generic words, a word of a project that uses them only as a labeled example. The test checks the exports both ways and the dependency line. No British spelling outside backticks and quotes. A sentence under about 40 words, a table cell at most two sentences.
+- **A test file run by hand runs with its memory capped,** `node node_modules/ts-code-checks/tools/memory-capped.js 1500M node --test <file>`, as `make test-unit` runs them, which caps eight files at a time at 4G: a failing assertion printing a big value can run the machine out of memory. A Claude Code hook (`.claude/settings.json`) refuses `node --test` run without it.
+
+## Commits
+
+How commits are labeled and logged, and the hook that fills in their hashes, are in [`.githooks/rule-based-commit-logging/`](.githooks/rule-based-commit-logging/claude-rule.md): once per clone, `git config core.hooksPath .githooks`.
+
+@.githooks/rule-based-commit-logging/claude-rule.md

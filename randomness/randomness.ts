@@ -1,4 +1,4 @@
-// ---------- generative/randomness: where a draw comes from, handed in, so nothing here imports a generator ----------
+// ---------- randomness: where a draw comes from, handed in, so nothing here imports a generator ----------
 
 // The draws a generative rule takes, seeded by whoever hands it in
 export interface Randomness {

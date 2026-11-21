@@ -1,9 +1,9 @@
-// Sync (generative/sync/): coupled oscillators falling into step, a note pulling them to flash
+// Sync (sync/): coupled oscillators falling into step, a note pulling them to flash
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Flock } from '../index.ts';
 import { seededRandomness } from '../../randomness/test/seeded-randomness.js';
-import { near } from '../../../base/util/test/near.js';
+import { near } from '../../randomness/test/near.js';
 
 const SEEDS = Array.from({ length: 20 }, (_, seed) => seed + 1);
 const TAU = Math.PI * 2;

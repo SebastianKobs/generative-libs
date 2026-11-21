@@ -1,4 +1,4 @@
-// Genetics (generative/genetics/): genes moved a little at a time by a depth, a genome
+// Genetics (genetics/): genes moved a little at a time by a depth, a genome
 // in sections mutated, crossed and kept in a lineage, an individual's own by its id and generation
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -14,7 +14,7 @@ import {
   wholeGene,
 } from '../index.ts';
 import { seededRandomness } from '../../randomness/test/seeded-randomness.js';
-import { near, isNear } from '../../../base/util/test/near.js';
+import { near, isNear } from '../../randomness/test/near.js';
 
 // a scale like an octave knob: equal steps in position are equal ratios in value, 20 to 20000
 const OCTAVES = {

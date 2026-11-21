@@ -1,0 +1,18 @@
+{
+  "name": "generative-libs",
+  "version": "0.0.0",
+  "private": true,
+  "license": "SEE LICENSE IN LICENSE",
+  "description": "Generative rules in TypeScript, free of any medium: seeded draws handed in, genes mutated and crossed, L-systems, one-row automata, a stroke's marks, coupled oscillators, a slime mold's trails; each usable alone.",
+  "type": "module",
+  "devDependencies": {
+    "knip": "6.39.0",
+    "oxlint": "1.87.0",
+    "oxlint-tsgolint": "7.0.2003",
+    "prettier": "3.9.9",
+    "typescript": "^7.0.2"
+  },
+  "optionalDependencies": {
+    "ts-code-checks": "git+ssh://git@github.com/SebastianKobs/ts-code-checks.git#d896ef09be3528e3060469005f1fa22ccdfe6ecf"
+  }
+}

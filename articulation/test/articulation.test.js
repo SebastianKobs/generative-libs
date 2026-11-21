@@ -1,10 +1,10 @@
-// Articulation (generative/articulation/): a stroke's marks from a hand's qualities, their place,
+// Articulation (articulation/): a stroke's marks from a hand's qualities, their place,
 // time, kind and intensity; a stroke made of a path; a throw swept along a shape the caller knows
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { USUAL_SPEED, articulate, carryOf, strokeOf, sweep } from '../index.ts';
 import { seededRandomness } from '../../randomness/test/seeded-randomness.js';
-import { near } from '../../../base/util/test/near.js';
+import { near } from '../../randomness/test/near.js';
 
 const SEEDS = Array.from({ length: 60 }, (_, seed) => seed + 1);
 const LINE_KINDS = new Set(['line', 'break']);

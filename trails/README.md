@@ -1,8 +1,8 @@
-# generative/trails
+# trails
 
 A slime mold's agents on a field, or on a grid of tiles that hand agents over at the seams (Physarum, after Jeff Jones's 2010 model). Agents sense the trail ahead, left and right, turn toward the strongest, step and deposit; the trail diffuses and fades. Food draws them, each seed lets a few more loose, and the threads that grow link the foods. No drawing: ink, an image or a heat map made of the traffic is the caller's. Run forward in time, with no past kept.
 
-Depends on: `generative/randomness`.
+Depends on: `randomness`.
 
 ```ts
 import { TRAFFIC_GRID, TrailField, TrailTiles } from './index.ts';

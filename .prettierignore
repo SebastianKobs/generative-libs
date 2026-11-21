@@ -1,0 +1,10 @@
+# Formatted by Prettier: the code and its configs. Not these:
+node_modules/
+# the docs and logs keep their own form (CLAUDE.md, plans a step a line)
+*.md
+*.log
+# npm writes it in its own form
+package-lock.json
+
+# the hook and its label list keep their own form (rule-based-commit-logging)
+.githooks/

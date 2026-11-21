@@ -1,0 +1,123 @@
+{
+  // The linter: bugs, not taste. Oxlint, since typescript-eslint can't read TypeScript 7;
+  // its type-aware rules through oxlint-tsgolint, built on TypeScript 7 itself. Its style rules stay off: Prettier formats.
+  // A misspelt rule here stops it ("not found"), so every rule lives in this file, none on the command line
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "options": { "typeAware": true, "reportUnusedDisableDirectives": "error" },
+  "ignorePatterns": ["node_modules/**"],
+  // ESLint's recommended rules, as Oxlint groups them
+  "categories": { "correctness": "error" },
+  "rules": {
+    // typescript-eslint's recommended set
+    "typescript/ban-ts-comment": "error",
+    "typescript/no-array-constructor": "error",
+    "typescript/no-duplicate-enum-values": "error",
+    "typescript/no-empty-object-type": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-extra-non-null-assertion": "error",
+    "typescript/no-misused-new": "error",
+    "typescript/no-namespace": "error",
+    "typescript/no-non-null-asserted-optional-chain": "error",
+    "typescript/no-require-imports": "error",
+    "typescript/no-this-alias": "error",
+    "typescript/no-unnecessary-type-constraint": "error",
+    "typescript/no-unsafe-declaration-merging": "error",
+    "typescript/no-unsafe-function-type": "error",
+    "typescript/no-unused-expressions": "error",
+    "typescript/no-unused-vars": "error",
+    "typescript/no-wrapper-object-types": "error",
+    "typescript/prefer-as-const": "error",
+    "typescript/prefer-namespace-keyword": "error",
+    "typescript/triple-slash-reference": "error",
+    // and its recommended-type-checked set: a promise nobody awaits, an any leaking through
+    "typescript/await-thenable": "error",
+    "typescript/no-array-delete": "error",
+    "typescript/no-base-to-string": "error",
+    "typescript/no-duplicate-type-constituents": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-for-in-array": "error",
+    "typescript/no-implied-eval": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/no-redundant-type-constituents": "error",
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/no-unsafe-argument": "error",
+    "typescript/no-unsafe-assignment": "error",
+    "typescript/no-unsafe-call": "error",
+    "typescript/no-unsafe-enum-comparison": "error",
+    "typescript/no-unsafe-member-access": "error",
+    "typescript/no-unsafe-return": "error",
+    "typescript/no-unsafe-unary-minus": "error",
+    "typescript/only-throw-error": "error",
+    "typescript/prefer-promise-reject-errors": "error",
+    "typescript/require-await": "error",
+    "typescript/restrict-plus-operands": "error",
+    "typescript/restrict-template-expressions": "error",
+    "typescript/unbound-method": "error",
+    // dense code broken up (T4b.1): a declaration a name, every block in braces, no comma operator
+    "eslint/one-var": ["error", "never"],
+    "eslint/curly": ["error", "all"],
+    "eslint/no-sequences": ["error", { "allowInParentheses": false }],
+    // readable, not terse (T4b.2): a ternary picks between two values, never chained or nested; if/else for more
+    "eslint/no-nested-ternary": "error"
+  },
+  "overrides": [
+    {
+      // untyped JavaScript is any everywhere: the any rules come on for a file as it turns TypeScript
+      "files": ["**/*.js", "**/*.mjs"],
+      "rules": {
+        "typescript/no-explicit-any": "off",
+        "typescript/no-unsafe-argument": "off",
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/no-unsafe-return": "off"
+      }
+    },
+    {
+      // a test sorts two lists alike to compare them as sets
+      "files": ["test/**"],
+      "rules": {
+        "typescript/require-array-sort-compare": "off"
+      }
+    },
+    {
+      // one concept a file: a class a file at most, in the libraries and the tools; the tests' stand-ins keep theirs
+      "files": [
+        "articulation/**",
+        "automata/**",
+        "genetics/**",
+        "randomness/**",
+        "rewriting/**",
+        "sync/**",
+        "trails/**",
+        "tools/**"
+      ],
+      "rules": { "eslint/max-classes-per-file": ["error", 1] }
+    },
+    {
+      // simple control flow: a function's complexity, its branches and conditions, 10 at most in the libraries
+      // and the tools; one past it is split into named steps, each a job. The tests keep theirs: a case reads top to bottom
+      "files": [
+        "articulation/**",
+        "automata/**",
+        "genetics/**",
+        "randomness/**",
+        "rewriting/**",
+        "sync/**",
+        "trails/**",
+        "tools/**"
+      ],
+      "rules": { "eslint/complexity": ["error", { "max": 10 }] }
+    },
+    {
+      // a library's tests, in its test/ folder, are tests: they keep their classes, their complexity and their short names, as
+      // those in test/ do, and sort two lists alike
+      "files": ["*/test/**"],
+      "rules": {
+        "eslint/max-classes-per-file": "off",
+        "eslint/complexity": "off",
+        "typescript/require-array-sort-compare": "off"
+      }
+    }
+  ]
+}

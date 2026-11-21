@@ -1,0 +1,7 @@
+# The commit labels: which log each goes in, and in its comment what it's for.
+# Read by log-commit-hash.sh, and imported into the rule by claude-rule.md.
+# A commit with several labels goes in each of their logs, once per log.
+# Keep it to flat `LABEL: path` lines, with paths from the repo root and no spaces:
+# the script reads it with sed, not a YAML parser.
+
+TECHNICAL: technical-log.md            # the libraries: a change, its tests, its tooling and setup, and fixes to existing behavior

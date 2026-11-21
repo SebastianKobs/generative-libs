@@ -1,4 +1,4 @@
-// ---------- generative/sync/flock: coupled oscillators falling slowly into step ----------
+// ---------- sync/flock: coupled oscillators falling slowly into step ----------
 
 import type { Randomness } from '../randomness/index.ts';
 

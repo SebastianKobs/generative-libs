@@ -1,4 +1,4 @@
-// ---------- generative/trails/traffic: where agents ran, on a grid finer than the simulation's ----------
+// ---------- trails/traffic: where agents ran, on a grid finer than the simulation's ----------
 
 // The traffic grid's side: finer than the simulation's, for hairlines
 export const TRAFFIC_GRID = 640;
