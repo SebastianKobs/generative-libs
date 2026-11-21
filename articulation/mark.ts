@@ -1,4 +1,4 @@
-// ---------- libs/generative/articulation/mark: what a hand makes along a stroke, with no medium in it ----------
+// ---------- generative/articulation/mark: what a hand makes along a stroke, with no medium in it ----------
 
 // What the hand does with its load
 export type Gesture = 'drip' | 'pour' | 'fling' | 'splatter';

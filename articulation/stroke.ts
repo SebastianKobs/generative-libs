@@ -1,4 +1,4 @@
-// ---------- libs/generative/articulation/stroke: a path made into a stroke, samples with their time and speed ----------
+// ---------- generative/articulation/stroke: a path made into a stroke, samples with their time and speed ----------
 
 // A point the hand passes, and when
 export interface PathPoint {

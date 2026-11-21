@@ -1,4 +1,4 @@
-// ---------- libs/generative/rewriting/production-gene: a production rule as a gene, mutated within limits ----------
+// ---------- generative/rewriting/production-gene: a production rule as a gene, mutated within limits ----------
 
 import type { Randomness } from '../randomness/index.ts';
 

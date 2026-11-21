@@ -1,4 +1,4 @@
-// ---------- libs/generative/articulation/sweep: a throw whose shape only the caller knows ----------
+// ---------- generative/articulation/sweep: a throw whose shape only the caller knows ----------
 
 import type { Hand, SweepMark } from './mark.ts';
 

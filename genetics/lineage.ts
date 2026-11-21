@@ -1,4 +1,4 @@
-// ---------- libs/generative/genetics/lineage: a genome and every one it came from: mutate, cross, step back ----------
+// ---------- generative/genetics/lineage: a genome and every one it came from: mutate, cross, step back ----------
 
 import type { Randomness } from '../randomness/index.ts';
 import { cross, flatGenome, mutate, type Genome, type GenomeSchema, type GenomeSection } from './genome.ts';

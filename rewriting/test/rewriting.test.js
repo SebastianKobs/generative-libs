@@ -1,4 +1,4 @@
-// Rewriting (mockup/src/libs/generative/rewriting/): an L-system's letters rewritten by a production
+// Rewriting (generative/rewriting/): an L-system's letters rewritten by a production
 // rule, each keeping an id through the generations; a production as a gene, mutated within its limits
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

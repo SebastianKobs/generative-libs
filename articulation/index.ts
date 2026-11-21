@@ -1,7 +1,7 @@
 // ---------- articulation: what a hand's gesture makes along a stroke, with no medium in it ----------
 // Its parts: a path made into a stroke (stroke.ts); a stroke's marks from the hand's qualities, their place, time,
 // kind and intensity (articulate.ts, mark.ts); a throw whose shape the caller knows (sweep.ts).
-// Uses only libs/generative/randomness/. No paint, no notes: what a mark becomes is the caller's job
+// Uses only generative/randomness/. No paint, no notes: what a mark becomes is the caller's job
 export { articulate, carryOf, type ArticulateOptions } from './articulate.ts';
 export type {
   BeadMark,

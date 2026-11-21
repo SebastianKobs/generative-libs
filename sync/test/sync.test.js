@@ -1,4 +1,4 @@
-// Sync (mockup/src/libs/generative/sync/): coupled oscillators falling into step, a note pulling them to flash
+// Sync (generative/sync/): coupled oscillators falling into step, a note pulling them to flash
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Flock } from '../index.ts';

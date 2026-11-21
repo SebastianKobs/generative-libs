@@ -1,4 +1,4 @@
-// ---------- libs/generative/trails/trail-tiles: fields on a grid of tiles, handing agents over at the seams ----------
+// ---------- generative/trails/trail-tiles: fields on a grid of tiles, handing agents over at the seams ----------
 
 import type { Randomness } from '../randomness/index.ts';
 import { foodReach, QUANTUM_BEATS, type TrailRules, type Tint, TrailField, type Traveller } from './trail-field.ts';

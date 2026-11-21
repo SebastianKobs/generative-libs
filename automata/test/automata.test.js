@@ -1,4 +1,4 @@
-// Automata (mockup/src/libs/generative/automata/): a one-row automaton, the next row by a rule number,
+// Automata (generative/automata/): a one-row automaton, the next row by a rule number,
 // and a rule as a gene, one bit flipped
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

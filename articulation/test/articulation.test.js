@@ -1,4 +1,4 @@
-// Articulation (mockup/src/libs/generative/articulation/): a stroke's marks from a hand's qualities, their place,
+// Articulation (generative/articulation/): a stroke's marks from a hand's qualities, their place,
 // time, kind and intensity; a stroke made of a path; a throw swept along a shape the caller knows
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

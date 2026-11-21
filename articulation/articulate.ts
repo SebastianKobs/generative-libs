@@ -1,4 +1,4 @@
-// ---------- libs/generative/articulation/articulate: a stroke's marks from a hand's qualities ----------
+// ---------- generative/articulation/articulate: a stroke's marks from a hand's qualities ----------
 
 import type { Randomness } from '../randomness/index.ts';
 import type { BreakMark, FlickMark, Hand, LineMark, Mark, MarkPlace } from './mark.ts';

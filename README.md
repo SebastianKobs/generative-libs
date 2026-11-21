@@ -10,4 +10,4 @@ The rules the visual ideas found, free of any medium: for a patch, a pattern, a 
 - [`sync/`](sync/README.md): coupled oscillators falling into step.
 - [`trails/`](trails/README.md): a slime mold's agents on a field.
 
-Reads: nothing outside the group; `genetics/`, `rewriting/`, `automata/`, `articulation/`, `sync/` and `trails/` each read `randomness/` alone, not each other: the genes of `rewriting/` and `automata/` fit genetics' `Gene` by their shape. Not even `libs/base/`: the seeded random is handed in, so the group travels alone.
+Reads: nothing outside the group; `genetics/`, `rewriting/`, `automata/`, `articulation/`, `sync/` and `trails/` each read `randomness/` alone, not each other: the genes of `rewriting/` and `automata/` fit genetics' `Gene` by their shape. Not even `base/`: the seeded random is handed in, so the group travels alone.

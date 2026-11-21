@@ -1,4 +1,4 @@
-// ---------- libs/generative/trails/trail-field: a slime mould's agents on a field ----------
+// ---------- generative/trails/trail-field: a slime mould's agents on a field ----------
 
 import type { Randomness } from '../randomness/index.ts';
 import { Traffic } from './traffic.ts';

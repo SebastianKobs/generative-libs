@@ -1,4 +1,4 @@
-// Genetics (mockup/src/libs/generative/genetics/): genes moved a little at a time by a depth, a genome
+// Genetics (generative/genetics/): genes moved a little at a time by a depth, a genome
 // in sections mutated, crossed and kept in a lineage, an individual's own by its id and generation
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

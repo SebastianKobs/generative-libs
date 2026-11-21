@@ -1,4 +1,4 @@
-// libs/generative/trails/traffic.ts: where agents ran, on a grid finer than the field's, the traffic fading as one gain
+// generative/trails/traffic.ts: where agents ran, on a grid finer than the field's, the traffic fading as one gain
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { TRAFFIC_GRID, Traffic, TrailField } from '../index.ts';

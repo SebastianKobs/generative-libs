@@ -1,4 +1,4 @@
-// libs/generative/trails/trail-field.ts: one field of a slime mold's agents on a plane, food drawing them,
+// generative/trails/trail-field.ts: one field of a slime mold's agents on a plane, food drawing them,
 // seeds letting more loose; its traffic and the colors they lay, run forward in quanta
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
