@@ -3,8 +3,9 @@
 
 # gitleaks, its official image, pinned by its digest (make secrets)
 GITLEAKS := ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
-# the checks that know nothing of this project, ts-code-checks (package.json, an optional dependency): each target says it's skipped without it
-CHECKS    := node_modules/ts-code-checks/tools
+# the checks that know nothing of this project, ts-code-checks (package.json, an optional dependency): each target says it's skipped without it;
+# found as Node finds a package, in node_modules here or, mounted in a project as one of its workspaces, in the project's
+CHECKS    := $(addsuffix /tools,$(shell node -p "require('path').dirname(require.resolve('ts-code-checks/package.json'))" 2>/dev/null))
 INSTALLED := $(wildcard $(CHECKS))
 SKIPPED    = @echo "make $@: ts-code-checks isn't installed: skipped"
 # the unit tests' memory cap; empty without ts-code-checks, which holds memory-capped.js: they run uncapped

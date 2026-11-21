@@ -2,7 +2,7 @@
 
 **What this is.** Generative rules in TypeScript, free of any medium, each usable alone: where a draw comes from, genes mutated and crossed, an L-system rewritten, a one-row automaton, a stroke's marks, coupled oscillators falling into step, a slime mold's trails. They grew inside Stim Garden's `libs` folder and then in audio-libs, their history carried over; a project mounts this repo as a git submodule or copies the libraries it needs. `README.md` lists them.
 
-**First steps.** `npm install`, then `make test-unit` runs the type check, the format check, the linter, Knip, the class members check and the clone finder, then the unit tests. The checks that know nothing of this project come from `ts-code-checks`, an optional dependency (`package.json`): without it they say they're skipped and the unit tests run uncapped.
+**First steps.** `npm install` (mounted in a project, nothing: the project's install serves, `README.md`), then `make test-unit` runs the type check, the format check, the linter, Knip, the class members check and the clone finder, then the unit tests. The checks that know nothing of this project come from `ts-code-checks`, an optional dependency (`package.json`): without it they say they're skipped and the unit tests run uncapped.
 
 ## Rules for the code
 
@@ -19,7 +19,7 @@
 - **Comments say why,** in short plain sentences, one idea a line, under about 90 characters.
 - **American spelling in prose, code and names.**
 - **The docs say what is true now, and a test checks them** (`test/unit/docs-rules.test.js`, `ts-code-checks`' docs rules, skipped without it). Every path in backticks exists, written from this repo's root (`genetics/`, never from a project that mounts it) or beside its doc, and no doc points at another project's files: its fact is written into the README or the pointer dropped. A library's README: `# <its path>`; one paragraph on what it is, for a user outside this project; `Depends on:` one line, every library its row in `test/module-rules.js` names, or "nothing"; one `ts` example importing from `./index.ts`; `How it works` only where order matters, numbered; the face as one table `| Export | What it does |`, a row an export or a tight family, a function `name()`, a type or class bare, a method inside its class's row, the file in parentheses, nothing unexported named as face; `Tests:` one line naming each `test/*.test.js`, or why there are none. Written in generic words, a word of a project that uses them only as a labeled example. The test checks the exports both ways and the dependency line. No British spelling outside backticks and quotes. A sentence under about 40 words, a table cell at most two sentences.
-- **A test file run by hand runs with its memory capped,** `node node_modules/ts-code-checks/tools/memory-capped.js 1500M node --test <file>`, as `make test-unit` runs them, which caps eight files at a time at 4G: a failing assertion printing a big value can run the machine out of memory. A Claude Code hook (`.claude/settings.json`) refuses `node --test` run without it.
+- **A test file run by hand runs with its memory capped,** `node node_modules/ts-code-checks/tools/memory-capped.js 1500M node --test <file>` (mounted, `node_modules/` the project's), as `make test-unit` runs them, which caps eight files at a time at 4G: a failing assertion printing a big value can run the machine out of memory. A Claude Code hook (`.claude/settings.json`) refuses `node --test` run without it.
 
 ## Commits
 
