@@ -10,7 +10,7 @@ Commits: the labels and their logs are in `.githooks/rule-based-commit-logging/l
 
 ## 2026-11-27
 
-- `pending` TECHNICAL: **the seeded generator a real export of `randomness/`, `seededRandomness(seed)` in TypeScript, its algorithm as the tests' helper had it (mulberry32, a fork by FNV-1a of `${seed}:${name}`); the helper a re-export of it, so the tests importing it stay as they are;** an app hands the same seeded draws in at run time as the tests do, the other libraries still import no generator. Its draws checked against those recorded from the helper before the move. *(Source: Request)* Files: `randomness/seeded.ts`, `randomness/index.ts`, `randomness/test/seeded-randomness.js`, `randomness/test/randomness.test.js`, `randomness/README.md`, `README.md`, `technical-log.md`
+- `27eba6d` TECHNICAL: **the seeded generator a real export of `randomness/`, `seededRandomness(seed)` in TypeScript, its algorithm as the tests' helper had it (mulberry32, a fork by FNV-1a of `${seed}:${name}`); the helper a re-export of it, so the tests importing it stay as they are;** an app hands the same seeded draws in at run time as the tests do, the other libraries still import no generator. Its draws checked against those recorded from the helper before the move. *(Source: Request)* Files: `randomness/seeded.ts`, `randomness/index.ts`, `randomness/test/seeded-randomness.js`, `randomness/test/randomness.test.js`, `randomness/README.md`, `README.md`, `technical-log.md`
 
 ## 2026-11-21
 
