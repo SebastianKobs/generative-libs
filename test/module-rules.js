@@ -7,7 +7,7 @@
 // faces. A crossing the order or the table doesn't allow fails at once.
 // Each library's row is what it uses: randomness alone, so each rule is taken without the others.
 export const LIBRARY_LAYOUT = Object.freeze({
-  order: ['randomness/', 'genetics/', 'rewriting/', 'automata/', 'articulation/', 'sync/', 'trails/'],
+  order: ['randomness/', 'genetics/', 'rewriting/', 'automata/', 'articulation/', 'sync/', 'trails/', 'noise/'],
   libraries: [],
   packages: {
     'randomness/': [],
@@ -17,6 +17,7 @@ export const LIBRARY_LAYOUT = Object.freeze({
     'articulation/': ['randomness/'],
     'sync/': ['randomness/'],
     'trails/': ['randomness/'],
+    'noise/': ['randomness/'],
   },
 });
 // the short names a module may have: none, the rules' domain has no short words of its own

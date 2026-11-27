@@ -8,6 +8,7 @@ export const CODE_FOLDERS = Object.freeze([
   'articulation',
   'automata',
   'genetics',
+  'noise',
   'randomness',
   'rewriting',
   'sync',

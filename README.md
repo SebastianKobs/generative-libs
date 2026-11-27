@@ -9,8 +9,9 @@ Generative rules, free of any medium: for a patch, a pattern, a phrase or a look
 - [`articulation/`](articulation/README.md): what a gesture makes along a stroke.
 - [`sync/`](sync/README.md): coupled oscillators falling into step.
 - [`trails/`](trails/README.md): a slime mold's agents on a field.
+- [`noise/`](noise/README.md): values that wander, pink, drifting or pulled back.
 
-Reads: nothing outside the libraries; `genetics/`, `rewriting/`, `automata/`, `articulation/`, `sync/` and `trails/` each read `randomness/` alone, not each other: the genes of `rewriting/` and `automata/` fit genetics' `Gene` by their shape. The seeded random is handed in, so each library travels alone.
+Reads: nothing outside the libraries; `genetics/`, `rewriting/`, `automata/`, `articulation/`, `sync/`, `trails/` and `noise/` each read `randomness/` alone, not each other: the genes of `rewriting/` and `automata/` fit genetics' `Gene` by their shape. The seeded random is handed in, so each library travels alone.
 
 ## Using them
 

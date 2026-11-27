@@ -29,6 +29,7 @@
     "articulation/**/*",
     "automata/**/*",
     "genetics/**/*",
+    "noise/**/*",
     "randomness/**/*",
     "rewriting/**/*",
     "sync/**/*",
