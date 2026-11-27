@@ -1,6 +1,6 @@
 # generative-libs
 
-**What this is.** Generative rules in TypeScript, free of any medium, each usable alone: where a draw comes from, genes mutated and crossed, an L-system rewritten, a one-row automaton, a stroke's marks, coupled oscillators falling into step, a slime mold's trails, noise that wanders. They grew inside Stim Garden's `libs` folder and then in audio-libs, their history carried over; a project mounts this repo as a git submodule or copies the libraries it needs. `README.md` lists them.
+**What this is.** Generative rules in TypeScript, free of any medium, each usable alone: where a draw comes from, genes mutated and crossed, an L-system rewritten, a one-row automaton, a stroke's marks, coupled oscillators falling into step, a slime mold's trails, noise that wanders, the cheapest path through layers of choices. They grew inside Stim Garden's `libs` folder and then in audio-libs, their history carried over; a project mounts this repo as a git submodule or copies the libraries it needs. `README.md` lists them.
 
 **First steps.** `npm install` (mounted in a project, nothing: the project's install serves, `README.md`), then `make test-unit` runs the type check, the format check, the linter, Knip, the class members check and the clone finder, then the unit tests. The checks that know nothing of this project come from `ts-code-checks`, an optional dependency (`package.json`): without it they say they're skipped and the unit tests run uncapped.
 

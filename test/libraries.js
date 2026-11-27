@@ -9,6 +9,7 @@ export const CODE_FOLDERS = Object.freeze([
   'automata',
   'genetics',
   'noise',
+  'paths',
   'randomness',
   'rewriting',
   'sync',

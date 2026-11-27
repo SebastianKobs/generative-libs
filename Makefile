@@ -43,7 +43,7 @@ clones:   # the same code written twice: a new clone fails, the known ones liste
 	$(if $(INSTALLED),node --disable-warning=ExperimentalWarning tools/find-clones.js,$(SKIPPED))
 # the faces: each library's entry
 class-members:   # a public class member only its own class uses, a library's faces aside
-	$(if $(INSTALLED),node $(CHECKS)/class-members.js tsconfig.json --faces '^(.+/)?index\.ts$$' --checked '^(articulation|automata|genetics|noise|randomness|rewriting|sync|trails)/',$(SKIPPED))
+	$(if $(INSTALLED),node $(CHECKS)/class-members.js tsconfig.json --faces '^(.+/)?index\.ts$$' --checked '^(articulation|automata|genetics|noise|paths|randomness|rewriting|sync|trails)/',$(SKIPPED))
 audit:    # known advisories, and the signatures; offline, it says so and passes
 	$(if $(INSTALLED),node $(CHECKS)/audit.js,$(SKIPPED))
 # what isn't committed yet, as one patch: the changes to what git tracks, staged or not, and the files it doesn't track yet (but those

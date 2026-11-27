@@ -5,9 +5,19 @@
 // The libraries in their import order, the one place it's kept.
 // A folder is a library, its entry its index.ts; another library is reached only through its entry, and inside one there are no
 // faces. A crossing the order or the table doesn't allow fails at once.
-// Each library's row is what it uses: randomness alone, so each rule is taken without the others.
+// Each library's row is what it uses: randomness alone or nothing, so each rule is taken without the others.
 export const LIBRARY_LAYOUT = Object.freeze({
-  order: ['randomness/', 'genetics/', 'rewriting/', 'automata/', 'articulation/', 'sync/', 'trails/', 'noise/'],
+  order: [
+    'randomness/',
+    'genetics/',
+    'rewriting/',
+    'automata/',
+    'articulation/',
+    'sync/',
+    'trails/',
+    'noise/',
+    'paths/',
+  ],
   libraries: [],
   packages: {
     'randomness/': [],
@@ -18,6 +28,7 @@ export const LIBRARY_LAYOUT = Object.freeze({
     'sync/': ['randomness/'],
     'trails/': ['randomness/'],
     'noise/': ['randomness/'],
+    'paths/': [],
   },
 });
 // the short names a module may have: none, the rules' domain has no short words of its own

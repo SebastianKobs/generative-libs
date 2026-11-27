@@ -30,6 +30,7 @@
     "automata/**/*",
     "genetics/**/*",
     "noise/**/*",
+    "paths/**/*",
     "randomness/**/*",
     "rewriting/**/*",
     "sync/**/*",
