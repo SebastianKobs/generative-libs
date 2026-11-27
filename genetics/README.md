@@ -15,10 +15,11 @@ lineage.mutate(0.3, randomness); // added and current; lineage.select(0) steps b
 
 | Export | What it does |
 |---|---|
-| `Gene`, `GeneValue`, `GeneScale` | A gene is one value and how it moves: `mutate(value, depth, randomness)` and an optional `cross()`. `GeneValue` is a number, an option's name or several; `GeneScale` is a number's range as a position 0 to 1 and back, which the app fills with its params' taper (`gene.ts`). |
+| `Gene`, `GeneValue`, `GeneScale` | A gene is one value and how it moves: `mutate(value, depth, randomness)` and an optional `cross()`. `GeneValue` is a number, an option's name or several, or several numbers; `GeneScale` is a number's range as a position 0 to 1 and back, which the app fills with its params' taper (`gene.ts`). |
 | `rangedGene()` | A number moved in position space by up to a third of the travel at depth 1, so a step is as far at the low end of an octaves scale as at the high (`gene.ts`). |
 | `wholeGene()` | A whole number moved by 1 either way, held to its bounds (`gene.ts`). |
 | `choiceGene()`, `choicesGene()` | One option's name, another with a chance of the depth; a number of options, none twice, one swapped for another, each as likely as its weight. Options are drawn by their names sorted, so reordering them changes nothing a seed grows (`gene.ts`). |
+| `patternGene()` | A step pattern, each step's level from 0, a rest, to a top. With a chance of the depth one change: a step a level up or down, a hit moved to a rest beside it, or a hit added or taken away. Crossed by a segment from one parent (`pattern-gene.ts`). |
 | `Genome`, `GenomeSection`, `GenomeSchema`, `SHARED_SECTION` | A genome in sections: `shared`, each kind's own, any no kind names. A section is its genes' values by name, the schema the genes by section (`genome.ts`). |
 | `mutate()` | Each gene moves with a chance of the depth, on a stream named by its section and itself, so a gene added later leaves the others as they were. Only some sections when asked (`genome.ts`). |
 | `cross()` | A child of two genomes: each gene a parent's or mixed, then mutated at 0.15 (`genome.ts`). |
@@ -26,4 +27,4 @@ lineage.mutate(0.3, randomness); // added and current; lineage.select(0) steps b
 | `flatGenome()` | A genome's sections in one object, for what reads it whole (`genome.ts`). |
 | `new Lineage(origin, schema)`: `mutate()`, `cross()`, `select()`, `current`, `flat`, `index`, `entries`; `LineageEntry` | A genome and every one it came from: a genome, its parents' indices and a label each. `mutate()` takes all sections or one at a depth scaled up by the square root of how many fewer genes it holds, drawn again up to 8 times until something moves. Nothing is ever removed (`lineage.ts`). |
 
-Tests: `test/genetics.test.js`, on a seeded `Randomness`.
+Tests: `test/genetics.test.js` and `test/pattern-gene.test.js`, on a seeded `Randomness`.

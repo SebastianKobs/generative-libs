@@ -2,8 +2,9 @@
 
 import type { Randomness } from '../randomness/index.ts';
 
-// What a gene holds: a number, an option's name, or several options' names (a theme's two paints)
-export type GeneValue = number | string | readonly string[];
+// What a gene holds: a number, an option's name, several options' names (a theme's two paints), or
+// several numbers (a step pattern's levels)
+export type GeneValue = number | string | readonly string[] | readonly number[];
 
 // How one value moves: a little by a depth, and mixed with another parent's. Without cross(), a child
 // takes one parent's
