@@ -16,7 +16,7 @@ Reads: nothing outside the libraries; `genetics/`, `rewriting/`, `automata/`, `a
 
 Take the libraries you need: copy their folders, or mount this repo as a git submodule, and import each library through its entry. The TypeScript runs as it is: Node strips the types, and a bundler such as Vite reads it. The libraries need no npm package.
 
-- **Draws handed in.** Every rule takes a `Randomness` (`randomness/index.ts`): `next()` a draw in [0, 1), `fork(name)` a stream of its own. The tests' seeded one is `randomness/test/seeded-randomness.js`, beside `near.js`, which the tests compare numbers with.
+- **Draws handed in.** Every rule takes a `Randomness` (`randomness/index.ts`): `next()` a draw in [0, 1), `fork(name)` a stream of its own. A seeded one is `seededRandomness(seed)`, for an app or a test; the tests reach it through `randomness/test/seeded-randomness.js`, beside `near.js`, which they compare numbers with.
 - **Time is the caller's.** A rule that runs in time is advanced by its caller, to a beat or a step, and keeps no past.
 - **Mounted in a project.** The project clones it with `git submodule update --init`. Changes are made and committed in the mount: once per clone, `git config core.hooksPath .githooks` there, so a labeled commit's hash is filled into `technical-log.md`; no `npm install` there: Node and npx find the tools in the project's `node_modules/`, so the project installs each package `package.json` names, at its version. `make test-unit` runs before each commit. The project then moves its pin to the new commit.
 
